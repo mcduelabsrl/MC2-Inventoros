@@ -14,6 +14,7 @@ Full release notes, with the pull request behind each change, are on [GitHub Rel
 
 ### Fixed
 
+- Shopify plugin: products and order lines without a SKU in Shopify were skipped, so stores with incomplete SKUs got few orders. Variants without a SKU (or sharing one) are now imported as `SHOPIFY-<variant id>`, and order lines are also matched by Shopify variant. Importing the catalogue again adds the variants a product was missing.
 - Shopify plugin: orders paid in Shopify showed as unpaid in Inventoros. What Shopify received is now recorded as a payment on the order, and money refunded in Shopify as a refund. **Recover orders** can go back further than 60 days when the app has `read_all_orders`.
 - Shopify plugin: importing older orders with **Recover orders** after importing the catalogue with stock took their stock a second time, since Shopify's figures already counted them. Orders and refunds from before Inventoros took its stock from Shopify (the connection, or a catalogue import with stock) are now imported as history: no stock movement, no returns, no `order_created` announcement.
 - Shopify plugin: jobs queued right after activating the plugin (such as the catalogue import) failed at once, because the queue worker had started before the plugin was active. Activating or deactivating the plugin now restarts the queue workers (`queue:restart`).

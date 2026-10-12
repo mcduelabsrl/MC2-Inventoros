@@ -167,6 +167,43 @@ final class ShopifySyncTest extends TestCase
         $this->assertSame(10, $product->fresh()->stock);
     }
 
+    public function test_an_order_line_without_a_sku_matches_by_shopify_variant(): void
+    {
+        $product = $this->makeProduct($this->org, ['sku' => 'SHOPIFY-777', 'stock' => 5]);
+        $connection = $this->connect(['push_inventory' => false]);
+        $line = $this->line('', 1, '80.00') + ['variant_id' => 777];
+
+        $this->postWebhook('orders/create', $this->orderPayload([$line]), $connection->webhook_token)->assertOk();
+
+        $this->assertSame($product->id, Order::query()->sole()->items()->sole()->product_id);
+        $this->assertSame(4, $product->fresh()->stock);
+    }
+
+    public function test_an_order_line_whose_sku_changed_matches_by_shopify_variant(): void
+    {
+        $product = $this->makeProduct($this->org, ['sku' => 'LOAFER-NEW', 'stock' => 5]);
+        $connection = $this->connect(['push_inventory' => false]);
+        ShopifyInventoryItem::query()->create(['organization_id' => $this->org->id, 'sku' => 'LOAFER-NEW', 'inventory_item_id' => 'gid://shopify/InventoryItem/88', 'variant_id' => 'gid://shopify/ProductVariant/88']);
+        $line = $this->line('0087010042180610', 1, '80.00') + ['variant_id' => 88];
+
+        $this->postWebhook('orders/create', $this->orderPayload([$line]), $connection->webhook_token)->assertOk();
+
+        $this->assertSame($product->id, Order::query()->sole()->items()->sole()->product_id);
+    }
+
+    public function test_stock_is_pushed_for_a_variant_imported_without_a_sku(): void
+    {
+        $product = $this->makeProduct($this->org, ['sku' => 'SHOPIFY-321', 'stock' => 5]);
+        $this->connect();
+        $this->fakeShopify(variants: [['sku' => '', 'id' => 'gid://shopify/ProductVariant/321', 'item' => 'gid://shopify/InventoryItem/321']]);
+
+        StockAdjustment::adjust($product->fresh(), -2, 'manual', 'Sold', actor: $this->admin);
+
+        $set = $this->callsTo('inventorySetQuantities');
+        $this->assertSame('gid://shopify/InventoryItem/321', $set[0]['variables']['input']['quantities'][0]['inventoryItemId']);
+        $this->assertSame(3, $set[0]['variables']['input']['quantities'][0]['quantity']);
+    }
+
     public function test_a_paid_shopify_order_is_paid_in_inventoros(): void
     {
         $this->makeProduct($this->org, ['sku' => 'MUG', 'stock' => 10]);
@@ -492,10 +529,12 @@ final class ShopifySyncTest extends TestCase
 
         $this->assertSame(10, Product::query()->where('sku', 'MUG')->sole()->stock, 'existing products are not touched');
         $this->assertSame([], $this->callsTo('inventorySetQuantities'), 'Shopify already has these quantities');
-        $this->assertSame(3, ShopifyInventoryItem::query()->count());
+        $this->assertSame(4, ShopifyInventoryItem::query()->count());
 
         $summary = ShopifyConnection::forOrganization($this->org->id)->catalogue_import_summary;
-        $this->assertSame([2, 3, 1, 1, 0], [$summary['products'], $summary['variants'], $summary['existing'], $summary['no_sku'], $summary['failed']]);
+        // The gift card has no SKU: imported as SHOPIFY-<variant id>.
+        $this->assertSame([3, 4, 1, 0, 1, 0], [$summary['products'], $summary['variants'], $summary['existing'], $summary['no_sku'], $summary['generated_skus'], $summary['failed']]);
+        $this->assertSame('Gift card', Product::query()->where('sku', 'SHOPIFY-40')->sole()->name);
     }
 
     public function test_a_catalogue_import_with_stock_makes_earlier_orders_history(): void
@@ -506,6 +545,46 @@ final class ShopifySyncTest extends TestCase
         $this->actingAs($this->admin)->post(route('plg.shopify.catalogue.import'), ['with_stock' => true]);
 
         $this->assertTrue(ShopifyConnection::forOrganization($this->org->id)->orders_since->gt(now()->subMinute()));
+    }
+
+    public function test_importing_again_adds_the_variants_a_product_was_missing(): void
+    {
+        // Imported before with only the variant that had a SKU.
+        [$hoodie, $small] = $this->makeVariantProduct('HOODIE-S', 2);
+        ProductOption::query()->create(['product_id' => $hoodie->id, 'name' => 'Size', 'values' => ['S'], 'position' => 0]);
+        $this->connect();
+        ShopifyInventoryItem::query()->create(['organization_id' => $this->org->id, 'sku' => 'HOODIE-S', 'inventory_item_id' => 'gid://shopify/InventoryItem/20', 'variant_id' => 'gid://shopify/ProductVariant/20']);
+        $this->fakeShopify(products: [
+            $this->graphqlProduct(2, 'Classic hoodie', 'classic-hoodie', [['name' => 'Size', 'values' => ['S', 'M']]], [
+                ['sku' => 'HOODIE-S', 'price' => '45.00', 'available' => 2, 'options' => ['Size' => 'S']],
+                ['sku' => '', 'price' => '49.00', 'available' => 3, 'options' => ['Size' => 'M']],
+            ]),
+        ]);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.catalogue.import'), ['with_stock' => true]);
+
+        $added = ProductVariant::query()->where('sku', 'SHOPIFY-21')->sole();
+        $this->assertSame($hoodie->id, $added->product_id);
+        $this->assertSame(['Size' => 'M'], $added->option_values);
+        $this->assertSame(3, $added->stock);
+        $this->assertSame(['S', 'M'], $hoodie->options()->sole()->values);
+        $this->assertSame(2, $small->fresh()->stock, 'existing variants are not touched');
+
+        $summary = ShopifyConnection::forOrganization($this->org->id)->catalogue_import_summary;
+        $this->assertSame([0, 1, 1, 1], [$summary['products'], $summary['extended'], $summary['variants_added'], $summary['generated_skus']]);
+    }
+
+    public function test_a_sku_shared_by_two_shopify_products_gets_its_own_sku_in_inventoros(): void
+    {
+        $this->makeProduct($this->org, ['sku' => 'LOAFER-42', 'stock' => 1]);
+        $this->connect();
+        ShopifyInventoryItem::query()->create(['organization_id' => $this->org->id, 'sku' => 'LOAFER-42', 'inventory_item_id' => 'gid://shopify/InventoryItem/10', 'variant_id' => 'gid://shopify/ProductVariant/10']);
+        $this->fakeShopify(products: [$this->graphqlProduct(5, 'Loafer (old listing)', 'loafer-old', [], [['sku' => 'LOAFER-42', 'price' => '99.00', 'available' => 4]])]);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.catalogue.import'), ['with_stock' => true]);
+
+        $this->assertSame('Loafer (old listing)', Product::query()->where('sku', 'SHOPIFY-50')->sole()->name);
+        $this->assertSame(1, Product::query()->where('sku', 'LOAFER-42')->sole()->stock);
     }
 
     public function test_pages_over_shopifys_cost_limit_are_asked_for_again_smaller(): void

@@ -62,6 +62,7 @@ final class OrderPayload
             'line_items' => array_map(fn (array $line) => [
                 'id' => ShopifyClient::legacyId($line['id'] ?? ''),
                 'sku' => $line['sku'] ?? null,
+                'variant_id' => isset($line['variant']['id']) ? ShopifyClient::legacyId($line['variant']['id']) : null,
                 'title' => $line['name'] ?? null,
                 'quantity' => (int) ($line['quantity'] ?? 0),
                 'current_quantity' => (int) ($line['currentQuantity'] ?? $line['quantity'] ?? 0),

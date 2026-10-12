@@ -86,11 +86,11 @@ class InventorySync
     {
         $orgId = $this->connection->organization_id;
 
-        // 1. Every Shopify variant with a SKU (the first one wins on duplicates).
-        $shopify = [];
-        foreach ($this->client->allVariants() as $variant) {
-            $shopify[$variant['sku']] ??= $variant;
-        }
+        // 1. Every Shopify variant, under its SKU (the first one wins on
+        // duplicates) and also under SHOPIFY-<id>, the SKU a variant gets in
+        // Inventoros when it has none or shares one with another variant.
+        $shopify = self::shopifyVariants($this->client);
+        $real = array_filter($shopify, fn ($v) => ! ($v['alias'] ?? false));
 
         // 2. Refresh the cache: upsert what exists, forget what no longer does.
         $this->cache($shopify);
@@ -133,11 +133,11 @@ class InventorySync
             ->where('tracked', true)
             ->get(['sku', 'last_error']);
 
-        $onlyShopify = array_values(array_diff(array_keys($shopify), array_keys($local)));
+        $onlyShopify = array_values(array_diff(array_keys($real), array_keys($local)));
         $onlyInventoros = array_values(array_diff(array_keys($local), array_keys($shopify)));
 
         $summary = [
-            'shopify_skus' => count($shopify),
+            'shopify_skus' => count($real),
             'inventoros_skus' => count($local),
             'matched' => $matched,
             'pushed' => $matched - count($untracked) - $failedSkus->count(),
@@ -161,6 +161,28 @@ class InventorySync
         ])->save();
 
         return $summary;
+    }
+
+    /**
+     * Every Shopify variant keyed by its effective SKU (the first variant
+     * wins a duplicated SKU), plus each one again under SHOPIFY-<id> (marked
+     * `alias`), the SKU Inventoros gives it when it has no SKU of its own or
+     * shares one.
+     *
+     * @return array<string, array{sku: string, variant_id: string, inventory_item_id: string, tracked: bool, alias?: bool}>
+     */
+    public static function shopifyVariants(ShopifyClient $client): array
+    {
+        $variants = [];
+        foreach ($client->allVariants() as $variant) {
+            $variants[$variant['sku']] ??= $variant;
+            $generated = ShopifyClient::generatedSku($variant['variant_id']);
+            if ($generated !== $variant['sku']) {
+                $variants[$generated] ??= ['sku' => $generated, 'alias' => true] + $variant;
+            }
+        }
+
+        return $variants;
     }
 
     /**

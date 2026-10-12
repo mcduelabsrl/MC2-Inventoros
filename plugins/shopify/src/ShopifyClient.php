@@ -51,7 +51,7 @@ class ShopifyClient
     public const ORDER_FIELDS = 'id legacyResourceId name email note createdAt processedAt updatedAt cancelledAt currencyCode displayFinancialStatus totalReceivedSet { shopMoney { amount } } '
         .'shippingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
         .'billingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
-        .'lineItems(first: 50) { nodes { id sku name quantity currentQuantity originalUnitPriceSet { shopMoney { amount } } '
+        .'lineItems(first: 50) { nodes { id sku name quantity currentQuantity variant { id } originalUnitPriceSet { shopMoney { amount } } '
         .'discountAllocations { allocatedAmountSet { shopMoney { amount } } } taxLines { priceSet { shopMoney { amount } } } } pageInfo { hasNextPage } } '
         .'shippingLines(first: 10) { nodes { originalPriceSet { shopMoney { amount } } discountedPriceSet { shopMoney { amount } } } } '
         .'refunds { id createdAt totalRefundedSet { shopMoney { amount } } refundLineItems(first: 50) { nodes { quantity restockType lineItem { id sku } } pageInfo { hasNextPage } } } '
@@ -140,8 +140,11 @@ class ShopifyClient
     public function variantsBySku(array $skus): array
     {
         $found = [];
+        $skus = array_values(array_unique($skus));
+        $generated = array_values(array_filter($skus, fn (string $sku) => self::isGeneratedSku($sku)));
+        $real = array_values(array_diff($skus, $generated));
 
-        foreach (array_chunk(array_values(array_unique($skus)), 25) as $chunk) {
+        foreach (array_chunk($real, 25) as $chunk) {
             $query = implode(' OR ', array_map(fn (string $sku) => 'sku:'.self::searchValue($sku), $chunk));
             $data = $this->graphql(
                 'query VariantsBySku($query: String!) { productVariants(first: 250, query: $query) { nodes { id sku inventoryItem { id tracked } } } }',
@@ -157,11 +160,28 @@ class ShopifyClient
             }
         }
 
+        // SHOPIFY-<id>: the variant itself, by id.
+        foreach (array_chunk($generated, 100) as $chunk) {
+            $ids = array_map(fn (string $sku) => self::gid('ProductVariant', substr($sku, strlen(self::GENERATED_SKU_PREFIX))), $chunk);
+            $data = $this->graphql(
+                'query VariantsById($ids: [ID!]!) { nodes(ids: $ids) { ... on ProductVariant { id sku inventoryItem { id tracked } } } }',
+                ['ids' => $ids],
+            );
+
+            foreach ($data['nodes'] ?? [] as $node) {
+                $variant = self::variantFromNode($node);
+                if ($variant !== null) {
+                    $found[self::generatedSku($variant['variant_id'])] = Arr::except($variant, 'sku');
+                }
+            }
+        }
+
         return $found;
     }
 
     /**
-     * Every variant in the store that has a SKU, one page at a time.
+     * Every variant in the store, one page at a time, each under its
+     * effective SKU (see effectiveSku()).
      *
      * @return \Generator<int, array{sku: string, variant_id: string, inventory_item_id: string, tracked: bool}>
      */
@@ -682,18 +702,42 @@ class ShopifyClient
      */
     private static function variantFromNode($node): ?array
     {
-        $sku = is_array($node) ? trim((string) ($node['sku'] ?? '')) : '';
         $item = is_array($node) ? ($node['inventoryItem'] ?? null) : null;
 
-        if ($sku === '' || ! is_array($item) || empty($item['id'])) {
+        if (! is_array($node) || empty($node['id']) || ! is_array($item) || empty($item['id'])) {
             return null;
         }
 
         return [
-            'sku' => $sku,
+            'sku' => self::effectiveSku($node['sku'] ?? null, (string) $node['id']),
             'variant_id' => (string) $node['id'],
             'inventory_item_id' => (string) $item['id'],
             'tracked' => (bool) ($item['tracked'] ?? true),
         ];
+    }
+
+    /** Prefix of the SKU Inventoros gives a Shopify variant that has none. */
+    public const GENERATED_SKU_PREFIX = 'SHOPIFY-';
+
+    /**
+     * The SKU a Shopify variant goes by in Inventoros: its own, or
+     * SHOPIFY-<variant id> when it has none, so variants without a SKU can
+     * still be matched (orders, stock, catalogue).
+     */
+    public static function effectiveSku(?string $sku, string|int $variantId): string
+    {
+        $sku = trim((string) $sku);
+
+        return $sku !== '' ? $sku : self::generatedSku($variantId);
+    }
+
+    public static function generatedSku(string|int $variantId): string
+    {
+        return self::GENERATED_SKU_PREFIX.self::legacyId($variantId);
+    }
+
+    public static function isGeneratedSku(string $sku): bool
+    {
+        return str_starts_with($sku, self::GENERATED_SKU_PREFIX);
     }
 }

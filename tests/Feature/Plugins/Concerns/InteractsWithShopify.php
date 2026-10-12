@@ -185,7 +185,7 @@ trait InteractsWithShopify
             'scopes' => $scopes ?? [...ShopifyClient::REQUIRED_SCOPES, ...ShopifyClient::OPTIONAL_SCOPES],
             'deny_once' => $denyOnce,
             'nodes' => array_map(fn ($v) => [
-                'id' => 'gid://shopify/ProductVariant/'.md5($v['sku']),
+                'id' => $v['id'] ?? 'gid://shopify/ProductVariant/'.md5($v['sku']),
                 'sku' => $v['sku'],
                 'inventoryItem' => ['id' => $v['item'], 'tracked' => $v['tracked'] ?? true],
             ], $variants),
@@ -236,6 +236,7 @@ trait InteractsWithShopify
             return Http::response(['data' => match (true) {
                 str_contains($query, 'GrantedScopes') => ['currentAppInstallation' => ['accessScopes' => array_map(fn ($h) => ['handle' => $h], $this->shopify['scopes'])]],
                 str_contains($query, 'ShopInfo') => ['shop' => ['name' => 'Test Store', 'myshopifyDomain' => 'test-store.myshopify.com'], 'locations' => ['nodes' => $this->shopify['locations']]],
+                str_contains($query, 'VariantsById') => ['nodes' => array_values(array_filter($this->shopify['nodes'], fn ($n) => in_array($n['id'], $variables['ids'] ?? [], true)))],
                 str_contains($query, 'VariantsBySku'), str_contains($query, 'AllVariants') => ['productVariants' => $page($this->shopify['nodes'])],
                 $failSet => ['inventorySetQuantities' => ['inventoryAdjustmentGroup' => null, 'userErrors' => [['field' => ['input', 'quantities', '0', 'locationId'], 'message' => 'Not stocked', 'code' => 'ITEM_NOT_STOCKED_AT_LOCATION']]]],
                 str_contains($query, 'inventorySetQuantities') => ['inventorySetQuantities' => ['inventoryAdjustmentGroup' => ['id' => 'gid://shopify/InventoryAdjustmentGroup/1'], 'userErrors' => []]],

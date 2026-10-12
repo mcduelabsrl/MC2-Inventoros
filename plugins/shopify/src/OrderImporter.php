@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\Models\ShopifyLink;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 
@@ -714,8 +715,7 @@ class OrderImporter
     {
         $targets = [];
         foreach ((array) ($payload['line_items'] ?? []) as $line) {
-            $sku = is_array($line) ? trim((string) ($line['sku'] ?? '')) : '';
-            if ($sku !== '' && ($target = $this->findBySku($organizationId, $sku)) !== null) {
+            if (is_array($line) && ($target = $this->findLine($organizationId, $line)) !== null) {
                 $targets[(string) ($line['id'] ?? '')] = $target;
             }
         }
@@ -747,7 +747,7 @@ class OrderImporter
 
             $sku = trim((string) ($line['sku'] ?? ''));
             $label = $sku !== '' ? $sku : (string) ($line['title'] ?? $line['name'] ?? 'line '.($line['id'] ?? '?'));
-            $target = $sku === '' ? null : $this->findBySku($organizationId, $sku);
+            $target = $this->findLine($organizationId, $line);
 
             if ($target === null) {
                 $unmatched[] = $label;
@@ -788,6 +788,41 @@ class OrderImporter
         }
 
         return [$items, $unmatched];
+    }
+
+    /**
+     * The Inventoros product or variant for a Shopify line: by its SKU; else,
+     * by its Shopify variant, through the SKU cache (a variant whose SKU
+     * changed since the order) or the SHOPIFY-<id> SKU a variant without a
+     * SKU is imported under.
+     *
+     * @param  array<string, mixed>  $line
+     * @return array{product_id: int, product_variant_id: int|null}|null
+     */
+    private function findLine(int $organizationId, array $line): ?array
+    {
+        $sku = trim((string) ($line['sku'] ?? ''));
+        if ($sku !== '' && ($target = $this->findBySku($organizationId, $sku)) !== null) {
+            return $target;
+        }
+
+        $variantId = $line['variant_id'] ?? null;
+        if ($variantId === null || $variantId === '') {
+            return null;
+        }
+
+        $cached = ShopifyInventoryItem::query()
+            ->where('organization_id', $organizationId)
+            ->where('variant_id', ShopifyClient::gid('ProductVariant', $variantId))
+            ->pluck('sku');
+
+        foreach ([...$cached->all(), ShopifyClient::generatedSku($variantId)] as $candidate) {
+            if ($candidate !== $sku && ($target = $this->findBySku($organizationId, (string) $candidate)) !== null) {
+                return $target;
+            }
+        }
+
+        return null;
     }
 
     /**
