@@ -22,6 +22,7 @@
 
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schedule;
@@ -128,6 +129,26 @@ return function (string $slug, array $manifest): void {
     add_action('product_updated', fn ($product) => $product->wasChanged('sku') ? $queuePush($product, null) : null);
     add_action('variant_created', fn ($variant) => $queuePush($variant->product, $variant));
     add_action('variant_updated', fn ($variant) => $variant->wasChanged('sku') ? $queuePush($variant->product, $variant) : null);
+
+    // ========================================
+    // QUEUE WORKERS
+    // ========================================
+
+    // Long-running queue workers load plugins when they start. One started
+    // before the plugin was activated cannot run its jobs (they fail at
+    // once), and one started before it was deactivated would keep running
+    // them. Ask every worker to restart after its current job; the process
+    // manager (Docker, systemd, Supervisor) starts it again with the plugin
+    // as it is now. The scheduler starts a fresh process every minute.
+    $restartWorkers = function (): void {
+        try {
+            Artisan::call('queue:restart');
+        } catch (Throwable $e) {
+            report($e);
+        }
+    };
+    add_action('plugin_activated_shopify', $restartWorkers);
+    add_action('plugin_deactivated_shopify', $restartWorkers);
 
     // ========================================
     // SCHEDULE
