@@ -250,6 +250,22 @@ class OrderControllerTest extends TestCase
         );
     }
 
+    public function test_orders_list_shows_and_searches_the_channel_reference(): void
+    {
+        $this->createOrder(['source' => 'shopify', 'external_reference' => '#1345', 'customer_name' => 'Ada']);
+        $this->createOrder(['customer_name' => 'Bea']);
+
+        $this->actingAs($this->admin)
+            ->get(route('orders.index', ['search' => '1345']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Orders/Index')
+                ->has('orders.data', 1)
+                ->where('orders.data.0.external_reference', '#1345')
+                ->where('orders.data.0.source', 'shopify')
+            );
+    }
+
     public function test_orders_list_can_be_filtered_by_status(): void
     {
         $this->createOrder(['status' => 'pending']);

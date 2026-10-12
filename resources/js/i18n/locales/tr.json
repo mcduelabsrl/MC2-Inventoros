@@ -563,6 +563,7 @@
     "searchOrders": "Sipariş Ara",
     "searchPlaceholder": "Sipariş numarası, müşteri adı veya e-posta ile ara...",
     "source": "Kaynak",
+    "externalReference": "Kanal referansı",
     "allSources": "Tüm Kaynaklar",
     "orderCol": "Sipariş",
     "customer": "Müşteri",

@@ -522,6 +522,11 @@ const formatOrderDate = (date, long = false) =>
                                     <dd class="mt-1 text-sm text-text-primary">{{ order.order_number }}</dd>
                                 </div>
 
+                                <div v-if="order.external_reference">
+                                    <dt class="text-xs text-text-tertiary">{{ t('orders.externalReference') }}</dt>
+                                    <dd class="mt-1 text-sm font-medium text-text-primary">{{ sourceText(order.source) }} {{ order.external_reference }}</dd>
+                                </div>
+
                                 <div>
                                     <dt class="text-xs text-text-tertiary">{{ t('orders.source') }}</dt>
                                     <dd class="mt-1">

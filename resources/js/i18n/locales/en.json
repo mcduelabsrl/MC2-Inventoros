@@ -443,6 +443,7 @@
     "searchOrders": "Search Orders",
     "searchPlaceholder": "Search by order number, customer name or email...",
     "source": "Source",
+    "externalReference": "Channel reference",
     "allSources": "All Sources",
     "orderCol": "Order",
     "customer": "Customer",

@@ -563,6 +563,7 @@
     "searchOrders": "搜索订单",
     "searchPlaceholder": "按订单号、客户姓名或邮箱搜索...",
     "source": "来源",
+    "externalReference": "渠道订单号",
     "allSources": "所有来源",
     "orderCol": "订单",
     "customer": "客户",

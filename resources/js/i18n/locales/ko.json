@@ -563,6 +563,7 @@
     "searchOrders": "주문 검색",
     "searchPlaceholder": "주문 번호, 고객 이름 또는 이메일로 검색...",
     "source": "출처",
+    "externalReference": "채널 주문번호",
     "allSources": "모든 출처",
     "orderCol": "주문",
     "customer": "고객",

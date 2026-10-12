@@ -563,6 +563,7 @@
     "searchOrders": "Cerca ordini",
     "searchPlaceholder": "Cerca per numero d'ordine, nome o e-mail del cliente...",
     "source": "Origine",
+    "externalReference": "Riferimento del canale",
     "allSources": "Tutte le origini",
     "orderCol": "Ordine",
     "customer": "Cliente",

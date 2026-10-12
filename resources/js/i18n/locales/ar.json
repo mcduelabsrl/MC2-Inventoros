@@ -563,6 +563,7 @@
     "searchOrders": "البحث في الطلبات",
     "searchPlaceholder": "البحث برقم الطلب أو اسم العميل أو بريده الإلكتروني...",
     "source": "المصدر",
+    "externalReference": "مرجع القناة",
     "allSources": "جميع المصادر",
     "orderCol": "الطلب",
     "customer": "العميل",

@@ -563,6 +563,7 @@
     "searchOrders": "Szukaj zamówień",
     "searchPlaceholder": "Szukaj po numerze zamówienia, nazwie lub e-mailu klienta...",
     "source": "Źródło",
+    "externalReference": "Numer w kanale",
     "allSources": "Wszystkie źródła",
     "orderCol": "Zamówienie",
     "customer": "Klient",

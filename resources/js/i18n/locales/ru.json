@@ -563,6 +563,7 @@
     "searchOrders": "Поиск заказов",
     "searchPlaceholder": "Поиск по номеру заказа, имени или email клиента...",
     "source": "Источник",
+    "externalReference": "Номер в канале",
     "allSources": "Все источники",
     "orderCol": "Заказ",
     "customer": "Клиент",
