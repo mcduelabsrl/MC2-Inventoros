@@ -1,0 +1,132 @@
+{
+    "nav": {
+        "title": "Shopify"
+    },
+    "permissions": {
+        "manage": {
+            "label": "Gestire Shopify",
+            "description": "Collegare un negozio Shopify, modificarne le impostazioni di sincronizzazione e ritentare l'importazione degli ordini"
+        }
+    },
+    "card": {
+        "title": "Shopify",
+        "description": "Importa gli ordini Shopify e pubblica le giacenze nel negozio."
+    },
+    "page": {
+        "title": "Shopify",
+        "description": "Gli ordini Shopify diventano ordini Inventoros e le giacenze di Inventoros vengono pubblicate su Shopify. I prodotti sono abbinati per SKU.",
+        "crumb": "Integrazioni"
+    },
+    "status": {
+        "connected": "Collegato a {shop}",
+        "not_connected": "Non collegato",
+        "error": "Ultimo errore",
+        "acting_user": "Ordini e movimenti di stock sono registrati come {name}."
+    },
+    "connection": {
+        "title": "Connessione",
+        "subtitle": "Le credenziali dell'app Shopify, dal Dev Dashboard (App settings).",
+        "shop_domain": "Indirizzo del negozio",
+        "shop_domain_hint": "Per esempio mio-negozio.myshopify.com",
+        "client_id": "Client ID",
+        "client_secret": "Client secret",
+        "client_secret_saved": "Salvato. Lascia vuoto per mantenerlo.",
+        "api_version": "Versione API",
+        "scopes": "L'app richiede questi scope: {scopes}.",
+        "save": "Salva e prova la connessione",
+        "disconnect": "Scollega",
+        "disconnect_confirm": "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate."
+    },
+    "sync": {
+        "title": "Impostazioni di sincronizzazione",
+        "import_orders": "Importa gli ordini Shopify",
+        "import_orders_hint": "I nuovi ordini Shopify diventano ordini Inventoros e scalano lo stock; annullarli in Shopify li annulla anche qui.",
+        "push_inventory": "Pubblica le giacenze su Shopify",
+        "push_inventory_hint": "Ogni movimento di stock in Inventoros imposta la quantità disponibile su Shopify. Inventoros è la fonte di verità.",
+        "warehouse": "Magazzino predefinito per gli ordini Shopify",
+        "warehouse_default": "Magazzino predefinito",
+        "locations": "Sedi Shopify",
+        "locations_hint": "Scegli quale stock di Inventoros mostra ogni sede Shopify. Lascia una sede non sincronizzata per gestirne lo stock su Shopify. Con più sedi, assegna a ciascuna il proprio magazzino.",
+        "location_unsynced": "Non sincronizzata",
+        "location_all": "Tutti i magazzini (stock totale)",
+        "warehouse_hint": "Usato quando la sede Shopify dell'ordine non è collegata a un magazzino.",
+        "location_hint": "Salva prima la connessione per caricare le sedi del negozio."
+    },
+    "webhooks": {
+        "title": "Webhook degli ordini",
+        "subtitle": "Shopify avvisa Inventoros dei nuovi ordini e di quelli annullati a questo indirizzo. Deve essere pubblico e HTTPS.",
+        "register": "Registra i webhook su Shopify",
+        "registered": "Registrati il {date}",
+        "not_registered": "Non ancora registrati",
+        "copy": "Copia",
+        "copied": "Copiato",
+        "checked": "Controllati il {date}"
+    },
+    "stock": {
+        "title": "Sincronizzazione giacenze",
+        "subtitle": "Abbina ogni variante Shopify a Inventoros tramite SKU e pubblica tutte le quantità. Eseguila una volta dopo il collegamento e ogni volta che cambi molti SKU.",
+        "run": "Sincronizza tutte le giacenze",
+        "never": "Mai eseguita",
+        "last_run": "Ultima esecuzione {date}",
+        "shopify_skus": "SKU su Shopify",
+        "inventoros_skus": "SKU su Inventoros",
+        "matched": "Abbinati",
+        "pushed": "Pubblicati",
+        "failed": "Falliti",
+        "untracked": "Non tracciati su Shopify",
+        "only_in_shopify": "Solo su Shopify",
+        "only_in_inventoros": "Solo su Inventoros",
+        "sample": "Primi {count}:"
+    },
+    "orders": {
+        "title": "Ordini Shopify recenti",
+        "empty": "Nessun ordine Shopify ricevuto finora.",
+        "shopify_order": "Ordine Shopify",
+        "status": "Stato",
+        "result": "Esito",
+        "inventoros_order": "Ordine Inventoros",
+        "retry": "Riprova",
+        "statuses": {
+            "imported": "Importato",
+            "failed": "Fallito",
+            "skipped": "Saltato",
+            "cancelled": "Annullato"
+        }
+    },
+    "recovery": {
+        "title": "Recupero ordini",
+        "subtitle": "Ogni dieci minuti Inventoros rilegge gli ordini modificati su Shopify: gli ordini il cui webhook è andato perso vengono comunque importati, e modifiche, evasioni e rimborsi vengono applicati. I webhook mancanti vengono registrati di nuovo.",
+        "last_run": "Ultima esecuzione {date}",
+        "never": "Non ancora eseguito",
+        "checked": "Ordini controllati",
+        "imported": "Importati",
+        "updated": "Aggiornati",
+        "not_imported": "Non importati",
+        "ignored": "Precedenti alla finestra di importazione",
+        "webhooks_repaired": "Webhook registrati di nuovo: {topics}",
+        "from": "Importa gli ordini mancanti creati dal",
+        "from_hint": "Shopify rende disponibili alle app gli ordini degli ultimi 60 giorni.",
+        "run": "Recupera ordini"
+    },
+    "catalogue": {
+        "title": "Catalogo",
+        "subtitle": "Copia i prodotti tra Shopify e Inventoros, abbinati per SKU. I prodotti che esistono già dall'altra parte non vengono mai modificati.",
+        "import_title": "Importa da Shopify",
+        "import_hint": "Crea un prodotto Inventoros per ogni prodotto Shopify i cui SKU non esistono in Inventoros, con opzioni e varianti.",
+        "with_stock": "Importa anche lo stock disponibile su Shopify come giacenza iniziale",
+        "import": "Importa prodotti",
+        "publish_title": "Pubblica su Shopify",
+        "publish_hint": "Crea un prodotto Shopify per ogni prodotto Inventoros attivo i cui SKU non esistono su Shopify, con prezzi, barcode e stock nelle sedi collegate.",
+        "status_draft": "Come bozze",
+        "status_active": "Come prodotti attivi",
+        "publish": "Pubblica prodotti",
+        "last_run": "Ultima esecuzione {date}",
+        "products": "Prodotti",
+        "variants": "Varianti",
+        "existing": "Già in Inventoros",
+        "already": "Già su Shopify",
+        "partial": "In parte su Shopify",
+        "no_sku": "Senza SKU",
+        "failed": "Falliti"
+    }
+}

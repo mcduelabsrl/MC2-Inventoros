@@ -1,0 +1,132 @@
+{
+    "nav": {
+        "title": "Shopify"
+    },
+    "permissions": {
+        "manage": {
+            "label": "Manage Shopify",
+            "description": "Connect a Shopify store, change its sync settings and retry order imports"
+        }
+    },
+    "card": {
+        "title": "Shopify",
+        "description": "Import Shopify orders and push stock to your store."
+    },
+    "page": {
+        "title": "Shopify",
+        "description": "Shopify orders become Inventoros orders, and Inventoros stock is published to Shopify. Products are matched by SKU.",
+        "crumb": "Integrations"
+    },
+    "status": {
+        "connected": "Connected to {shop}",
+        "not_connected": "Not connected",
+        "error": "Last error",
+        "acting_user": "Orders and stock changes are recorded as {name}."
+    },
+    "connection": {
+        "title": "Connection",
+        "subtitle": "The Shopify app's credentials, from the Dev Dashboard (App settings).",
+        "shop_domain": "Store address",
+        "shop_domain_hint": "For example my-store.myshopify.com",
+        "client_id": "Client ID",
+        "client_secret": "Client secret",
+        "client_secret_saved": "Saved. Leave empty to keep it.",
+        "api_version": "API version",
+        "scopes": "The app needs these scopes: {scopes}.",
+        "save": "Save and test connection",
+        "disconnect": "Disconnect",
+        "disconnect_confirm": "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted."
+    },
+    "sync": {
+        "title": "Sync settings",
+        "import_orders": "Import Shopify orders",
+        "import_orders_hint": "New Shopify orders become Inventoros orders and take stock out; cancelling in Shopify cancels them here.",
+        "push_inventory": "Push stock to Shopify",
+        "push_inventory_hint": "Every stock change in Inventoros sets the available quantity in Shopify. Inventoros is the source of truth.",
+        "warehouse": "Default warehouse for Shopify orders",
+        "warehouse_default": "Default warehouse",
+        "locations": "Shopify locations",
+        "locations_hint": "Choose which Inventoros stock each Shopify location shows. Leave a location unsynced to manage its stock in Shopify. With several locations, give each its own warehouse.",
+        "location_unsynced": "Not synced",
+        "location_all": "All warehouses (total stock)",
+        "warehouse_hint": "Used when the order's Shopify location is not mapped to a warehouse.",
+        "location_hint": "Save the connection first to load the store's locations."
+    },
+    "webhooks": {
+        "title": "Order webhooks",
+        "subtitle": "Shopify notifies Inventoros of new and cancelled orders at this address. It must be public and HTTPS.",
+        "register": "Register webhooks in Shopify",
+        "registered": "Registered {date}",
+        "not_registered": "Not registered yet",
+        "copy": "Copy",
+        "copied": "Copied",
+        "checked": "Checked {date}"
+    },
+    "stock": {
+        "title": "Stock sync",
+        "subtitle": "Match every Shopify variant to Inventoros by SKU and push all quantities. Run it once after connecting, and whenever SKUs change in bulk.",
+        "run": "Sync all stock now",
+        "never": "Never run",
+        "last_run": "Last run {date}",
+        "shopify_skus": "Shopify SKUs",
+        "inventoros_skus": "Inventoros SKUs",
+        "matched": "Matched",
+        "pushed": "Pushed",
+        "failed": "Failed",
+        "untracked": "Not tracked in Shopify",
+        "only_in_shopify": "Only in Shopify",
+        "only_in_inventoros": "Only in Inventoros",
+        "sample": "First {count}:"
+    },
+    "orders": {
+        "title": "Recent Shopify orders",
+        "empty": "No Shopify orders received yet.",
+        "shopify_order": "Shopify order",
+        "status": "Status",
+        "result": "Result",
+        "inventoros_order": "Inventoros order",
+        "retry": "Retry",
+        "statuses": {
+            "imported": "Imported",
+            "failed": "Failed",
+            "skipped": "Skipped",
+            "cancelled": "Cancelled"
+        }
+    },
+    "recovery": {
+        "title": "Order recovery",
+        "subtitle": "Every ten minutes Inventoros reads back the orders Shopify changed, so orders whose webhook was lost are still imported, and edits, fulfilments and refunds still apply. Missing webhooks are registered again.",
+        "last_run": "Last run {date}",
+        "never": "Not run yet",
+        "checked": "Orders checked",
+        "imported": "Imported",
+        "updated": "Updated",
+        "not_imported": "Not imported",
+        "ignored": "Older than the import window",
+        "webhooks_repaired": "Webhooks registered again: {topics}",
+        "from": "Import missing orders created since",
+        "from_hint": "Shopify keeps the last 60 days of orders available to apps.",
+        "run": "Recover orders"
+    },
+    "catalogue": {
+        "title": "Catalogue",
+        "subtitle": "Copy products between Shopify and Inventoros, matched by SKU. Products that already exist on the other side are never changed.",
+        "import_title": "Import from Shopify",
+        "import_hint": "Creates an Inventoros product for each Shopify product whose SKUs Inventoros does not have, with its options and variants.",
+        "with_stock": "Also import Shopify's available stock as opening stock",
+        "import": "Import products",
+        "publish_title": "Publish to Shopify",
+        "publish_hint": "Creates a Shopify product for each active Inventoros product whose SKUs Shopify does not have, with prices, barcodes and stock at the mapped locations.",
+        "status_draft": "As drafts",
+        "status_active": "As active products",
+        "publish": "Publish products",
+        "last_run": "Last run {date}",
+        "products": "Products",
+        "variants": "Variants",
+        "existing": "Already in Inventoros",
+        "already": "Already in Shopify",
+        "partial": "Partly in Shopify",
+        "no_sku": "Without SKU",
+        "failed": "Failed"
+    }
+}
