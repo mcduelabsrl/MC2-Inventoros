@@ -1,7 +1,7 @@
 <script setup>
 // The Shopify settings page (/p/shopify): connection, sync settings, order
 // webhooks, full stock sync and the log of received Shopify orders.
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { t } from './i18n.js';
 
 const {
@@ -27,7 +27,6 @@ const form = useForm({
     client_id: props.connection?.client_id ?? '',
     client_secret: '',
     api_version: props.connection?.api_version ?? props.defaultApiVersion,
-    location_id: props.connection?.location_id ?? '',
     warehouse_id: props.connection?.warehouse_id ?? '',
     import_orders: props.connection?.import_orders ?? true,
     push_inventory: props.connection?.push_inventory ?? true,
@@ -36,14 +35,34 @@ const form = useForm({
 const busy = ref(null);
 const copied = ref(false);
 
+// One select per Shopify location: '' = not synced, 'all' = total stock, or a warehouse id.
+const mapping = reactive(Object.fromEntries((props.connection?.locations ?? []).map((location) => {
+    const entry = (props.connection?.location_map ?? []).find((e) => e.location_id === location.id);
+    return [location.id, entry ? (entry.warehouse_id ?? 'all') : ''];
+})));
+
+const recovery = useForm({ from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10) });
+const catalogueImport = useForm({ with_stock: true });
+const cataloguePublish = useForm({ status: 'draft' });
+
+const recoverySummary = computed(() => props.connection?.orders_sync_summary ?? null);
+const importSummary = computed(() => props.connection?.catalogue_import_summary ?? null);
+const publishSummary = computed(() => props.connection?.catalogue_publish_summary ?? null);
+const minRecoveryDate = new Date(Date.now() - 59 * 86400000).toISOString().slice(0, 10);
+const today = new Date().toISOString().slice(0, 10);
+
 const summary = computed(() => props.connection?.last_full_sync_summary ?? null);
 
 function save() {
-    form.transform((data) => ({
-        ...data,
-        location_id: data.location_id || null,
-        warehouse_id: data.warehouse_id || null,
-    })).post(`${actions}/settings`, {
+    form.transform((data) => {
+        const payload = { ...data, warehouse_id: data.warehouse_id || null };
+        if (props.connection?.locations?.length) {
+            payload.location_map = Object.entries(mapping)
+                .filter(([, value]) => value !== '')
+                .map(([locationId, value]) => ({ location_id: locationId, warehouse_id: value === 'all' ? null : value }));
+        }
+        return payload;
+    }).post(`${actions}/settings`, {
         preserveScroll: true,
         onSuccess: () => form.reset('client_secret'),
     });
@@ -173,16 +192,20 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                             </span>
                         </label>
 
-                        <label class="shp-field">
-                            <span class="shp-label">{{ t('sync.location') }}</span>
-                            <select v-model="form.location_id" class="shp-input" :disabled="!connection?.locations?.length">
-                                <option value="">{{ t('sync.location_none') }}</option>
-                                <option v-for="location in connection?.locations ?? []" :key="location.id" :value="location.id">
-                                    {{ location.name }}
-                                </option>
-                            </select>
-                            <span v-if="!connection?.locations?.length" class="shp-hint">{{ t('sync.location_hint') }}</span>
-                        </label>
+                        <div class="shp-field">
+                            <span class="shp-label">{{ t('sync.locations') }}</span>
+                            <span class="shp-hint">{{ t('sync.locations_hint') }}</span>
+                            <p v-if="!connection?.locations?.length" class="shp-hint">{{ t('sync.location_hint') }}</p>
+                            <div v-for="location in connection?.locations ?? []" :key="location.id" class="shp-map-row">
+                                <span class="shp-map-name">{{ location.name }}</span>
+                                <select v-model="mapping[location.id]" class="shp-input">
+                                    <option value="">{{ t('sync.location_unsynced') }}</option>
+                                    <option value="all">{{ t('sync.location_all') }}</option>
+                                    <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }}</option>
+                                </select>
+                            </div>
+                            <span v-if="form.errors.location_map" class="shp-error">{{ form.errors.location_map }}</span>
+                        </div>
 
                         <label class="shp-field">
                             <span class="shp-label">{{ t('sync.warehouse') }}</span>
@@ -190,6 +213,7 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                                 <option value="">{{ t('sync.warehouse_default') }}</option>
                                 <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }}</option>
                             </select>
+                            <span class="shp-hint">{{ t('sync.warehouse_hint') }}</span>
                             <span v-if="form.errors.warehouse_id" class="shp-error">{{ form.errors.warehouse_id }}</span>
                         </label>
                     </div>
@@ -225,6 +249,7 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                     </div>
                     <p class="shp-hint">
                         {{ connection.webhooks_registered_at ? t('webhooks.registered', { date: formatDate(connection.webhooks_registered_at) }) : t('webhooks.not_registered') }}
+                        <template v-if="connection.webhooks_checked_at"> · {{ t('webhooks.checked', { date: formatDate(connection.webhooks_checked_at) }) }}</template>
                     </p>
                 </Card>
 
@@ -234,7 +259,7 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                         <template #actions>
                             <Button
                                 size="sm"
-                                :disabled="!connection.connected || !connection.push_inventory || !connection.location_id"
+                                :disabled="!connection.connected || !connection.push_inventory || !connection.location_map?.length"
                                 :loading="busy === 'sync'"
                                 @click="act('sync', 'post', `${actions}/sync`)"
                             >
@@ -269,6 +294,91 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                             </p>
                         </details>
                     </template>
+                </Card>
+
+                <!-- Order recovery -->
+                <Card class="shp-section">
+                    <CardHeader :title="t('recovery.title')" :subtitle="t('recovery.subtitle')" />
+                    <p class="shp-hint">
+                        {{ connection.orders_synced_at ? t('recovery.last_run', { date: formatDate(connection.orders_synced_at) }) : t('recovery.never') }}
+                    </p>
+                    <template v-if="recoverySummary">
+                        <dl class="shp-stats">
+                            <div v-for="key in ['checked', 'imported', 'updated', 'not_imported']" :key="key">
+                                <dt>{{ t(`recovery.${key}`) }}</dt>
+                                <dd>{{ recoverySummary[key] ?? 0 }}</dd>
+                            </div>
+                        </dl>
+                        <p v-if="recoverySummary.webhooks_repaired?.length" class="shp-hint">
+                            {{ t('recovery.webhooks_repaired', { topics: recoverySummary.webhooks_repaired.join(', ') }) }}
+                        </p>
+                    </template>
+                    <form class="shp-inline" @submit.prevent="recovery.post(`${actions}/recover`, { preserveScroll: true })">
+                        <label class="shp-field">
+                            <span class="shp-label">{{ t('recovery.from') }}</span>
+                            <input v-model="recovery.from" class="shp-input shp-input-short" type="date" :min="minRecoveryDate" :max="today" required />
+                            <span class="shp-hint">{{ t('recovery.from_hint') }}</span>
+                            <span v-if="recovery.errors.from" class="shp-error">{{ recovery.errors.from }}</span>
+                        </label>
+                        <Button type="submit" size="sm" :disabled="!connection.connected || !connection.import_orders" :loading="recovery.processing">
+                            {{ t('recovery.run') }}
+                        </Button>
+                    </form>
+                </Card>
+
+                <!-- Catalogue -->
+                <Card class="shp-section">
+                    <CardHeader :title="t('catalogue.title')" :subtitle="t('catalogue.subtitle')" />
+                    <div class="shp-columns">
+                        <div>
+                            <h4 class="shp-subtitle">{{ t('catalogue.import_title') }}</h4>
+                            <p class="shp-hint">{{ t('catalogue.import_hint') }}</p>
+                            <label class="shp-check shp-gap">
+                                <input v-model="catalogueImport.with_stock" type="checkbox" />
+                                <span class="shp-label">{{ t('catalogue.with_stock') }}</span>
+                            </label>
+                            <Button size="sm" :disabled="!connection.connected" :loading="catalogueImport.processing" @click="catalogueImport.post(`${actions}/catalogue/import`, { preserveScroll: true })">
+                                {{ t('catalogue.import') }}
+                            </Button>
+                            <template v-if="importSummary">
+                                <p class="shp-hint shp-gap">{{ t('catalogue.last_run', { date: formatDate(importSummary.finished_at) }) }}</p>
+                                <dl class="shp-stats shp-stats-compact">
+                                    <div v-for="key in ['products', 'variants', 'existing', 'no_sku', 'failed']" :key="key">
+                                        <dt>{{ t(`catalogue.${key}`) }}</dt>
+                                        <dd>{{ importSummary[key] ?? 0 }}</dd>
+                                    </div>
+                                </dl>
+                                <details v-if="importSummary.failed_sample?.length" class="shp-details">
+                                    <summary>{{ t('catalogue.failed') }}</summary>
+                                    <ul><li v-for="line in importSummary.failed_sample" :key="line">{{ line }}</li></ul>
+                                </details>
+                            </template>
+                        </div>
+                        <div>
+                            <h4 class="shp-subtitle">{{ t('catalogue.publish_title') }}</h4>
+                            <p class="shp-hint">{{ t('catalogue.publish_hint') }}</p>
+                            <select v-model="cataloguePublish.status" class="shp-input shp-input-short shp-gap">
+                                <option value="draft">{{ t('catalogue.status_draft') }}</option>
+                                <option value="active">{{ t('catalogue.status_active') }}</option>
+                            </select>
+                            <Button size="sm" :disabled="!connection.connected || !connection.location_map?.length" :loading="cataloguePublish.processing" @click="cataloguePublish.post(`${actions}/catalogue/publish`, { preserveScroll: true })">
+                                {{ t('catalogue.publish') }}
+                            </Button>
+                            <template v-if="publishSummary">
+                                <p class="shp-hint shp-gap">{{ t('catalogue.last_run', { date: formatDate(publishSummary.finished_at) }) }}</p>
+                                <dl class="shp-stats shp-stats-compact">
+                                    <div v-for="key in ['products', 'variants', 'already', 'partial', 'no_sku', 'failed']" :key="key">
+                                        <dt>{{ t(`catalogue.${key}`) }}</dt>
+                                        <dd>{{ publishSummary[key] ?? 0 }}</dd>
+                                    </div>
+                                </dl>
+                                <details v-if="publishSummary.failed_sample?.length" class="shp-details">
+                                    <summary>{{ t('catalogue.failed') }}</summary>
+                                    <ul><li v-for="line in publishSummary.failed_sample" :key="line">{{ line }}</li></ul>
+                                </details>
+                            </template>
+                        </div>
+                    </div>
                 </Card>
 
                 <!-- Orders -->
@@ -573,5 +683,53 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
     max-width: 28rem;
     color: hsl(var(--text-secondary)) !important;
     overflow-wrap: anywhere;
+}
+.shp-map-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.shp-map-name {
+    font-size: 0.875rem;
+    color: hsl(var(--text-primary));
+    overflow-wrap: anywhere;
+}
+
+.shp-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.shp-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+@media (min-width: 1024px) {
+    .shp-columns {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.shp-subtitle {
+    margin: 0 0 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--text-primary));
+}
+
+.shp-gap {
+    margin: 0.75rem 0;
+}
+
+.shp-stats-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 </style>

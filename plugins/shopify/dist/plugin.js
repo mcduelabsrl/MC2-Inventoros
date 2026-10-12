@@ -1,66 +1,83 @@
-const j = window.Inventoros.Vue, { BaseTransition: Rt, BaseTransitionPropsValidators: $t, Comment: Tt, DeprecationTypes: Ut, EffectScope: xt, ErrorCodes: Pt, ErrorTypeStrings: Vt, Fragment: S, KeepAlive: Dt, ReactiveEffect: Mt, Static: At, Suspense: Et, Teleport: Ot, Text: Nt, TrackOpTypes: qt, Transition: Ht, TransitionGroup: Kt, TriggerOpTypes: Ft, VueElement: Bt, __esModule: Lt, assertNumber: Wt, callWithAsyncErrorHandling: jt, callWithErrorHandling: Gt, camelize: Qt, capitalize: Jt, cloneVNode: Xt, compatUtils: Yt, compile: Zt, computed: G, createApp: eo, createBlock: z, createCommentVNode: h, createElementBlock: l, createElementVNode: t, createHydrationRenderer: to, createPropsRestProxy: oo, createRenderer: no, createSSRApp: so, createSlots: io, createStaticVNode: ro, createTextVNode: v, createVNode: u, customRef: ao, defineAsyncComponent: lo, defineComponent: co, defineCustomElement: uo, defineEmits: po, defineExpose: ho, defineModel: _o, defineOptions: yo, defineProps: fo, defineSSRCustomElement: vo, defineSlots: mo, devtools: go, effect: So, effectScope: bo, getCurrentInstance: ko, getCurrentScope: wo, getCurrentWatcher: Co, getTransitionRawChildren: Io, guardReactiveProps: zo, h: Ro, handleError: $o, hasInjectionContext: To, hydrate: Uo, hydrateOnIdle: xo, hydrateOnInteraction: Po, hydrateOnMediaQuery: Vo, hydrateOnVisible: Do, initCustomFormatter: Mo, initDirectivesForSSR: Ao, inject: Eo, isMemoSame: Oo, isProxy: No, isReactive: qo, isReadonly: Ho, isRef: Ko, isRuntimeOnly: Fo, isShallow: Bo, isVNode: Lo, markRaw: Wo, mergeDefaults: jo, mergeModels: Go, mergeProps: Qo, nextTick: Jo, nodeOps: Xo, normalizeClass: Yo, normalizeProps: Zo, normalizeStyle: en, onActivated: tn, onBeforeMount: on, onBeforeUnmount: nn, onBeforeUpdate: sn, onDeactivated: rn, onErrorCaptured: an, onMounted: ln, onRenderTracked: cn, onRenderTriggered: dn, onScopeDispose: un, onServerPrefetch: pn, onUnmounted: hn, onUpdated: _n, onWatcherCleanup: yn, openBlock: r, patchProp: fn, popScopeId: vn, provide: mn, proxyRefs: gn, pushScopeId: Sn, queuePostFlushCb: bn, reactive: kn, readonly: wn, ref: D, registerRuntimeCompiler: Cn, render: In, renderList: w, renderSlot: zn, resolveComponent: Rn, resolveDirective: $n, resolveDynamicComponent: Tn, resolveFilter: Un, resolveTransitionHooks: xn, setBlockTracking: Pn, setDevtoolsHook: Vn, setTransitionHooks: Dn, shallowReactive: Mn, shallowReadonly: An, shallowRef: En, ssrContextKey: On, ssrUtils: Nn, stop: qn, toDisplayString: o, toHandlerKey: Hn, toHandlers: Kn, toRaw: Fn, toRef: Bn, toRefs: Ln, toValue: Wn, transformVNodeArgs: jn, triggerRef: Gn, unref: e, useAttrs: Qn, useCssModule: Jn, useCssVars: Xn, useHost: Yn, useId: Zn, useModel: es, useSSRContext: ts, useShadowRoot: os, useSlots: ns, useTemplateRef: ss, useTransitionState: is, vModelCheckbox: M, vModelDynamic: rs, vModelRadio: as, vModelSelect: A, vModelText: U, vShow: Q, version: ls, warn: cs, watch: ds, watchEffect: us, watchPostEffect: ps, watchSyncEffect: hs, withAsyncContext: _s, withCtx: d, withDefaults: ys, withDirectives: k, withKeys: fs, withMemo: vs, withModifiers: J, withScopeId: ms } = j, X = { title: "Shopify" }, Y = { manage: { label: "Manage Shopify", description: "Connect a Shopify store, change its sync settings and retry order imports" } }, Z = { title: "Shopify", description: "Import Shopify orders and push stock to your store." }, ee = { title: "Shopify", description: "Shopify orders become Inventoros orders, and Inventoros stock is published to Shopify. Products are matched by SKU.", crumb: "Integrations" }, te = { connected: "Connected to {shop}", not_connected: "Not connected", error: "Last error", acting_user: "Orders and stock changes are recorded as {name}." }, oe = { title: "Connection", subtitle: "The Shopify app's credentials, from the Dev Dashboard (App settings).", shop_domain: "Store address", shop_domain_hint: "For example my-store.myshopify.com", client_id: "Client ID", client_secret: "Client secret", client_secret_saved: "Saved. Leave empty to keep it.", api_version: "API version", scopes: "The app needs these scopes: {scopes}.", save: "Save and test connection", disconnect: "Disconnect", disconnect_confirm: "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted." }, ne = { title: "Sync settings", import_orders: "Import Shopify orders", import_orders_hint: "New Shopify orders become Inventoros orders and take stock out; cancelling in Shopify cancels them here.", push_inventory: "Push stock to Shopify", push_inventory_hint: "Every stock change in Inventoros sets the available quantity in Shopify. Inventoros is the source of truth.", location: "Shopify location", location_none: "Choose a location", location_hint: "Save the connection first to load the store's locations.", warehouse: "Inventoros warehouse for Shopify orders", warehouse_default: "Default warehouse" }, se = { title: "Order webhooks", subtitle: "Shopify notifies Inventoros of new and cancelled orders at this address. It must be public and HTTPS.", register: "Register webhooks in Shopify", registered: "Registered {date}", not_registered: "Not registered yet", copy: "Copy", copied: "Copied" }, ie = { title: "Stock sync", subtitle: "Match every Shopify variant to Inventoros by SKU and push all quantities. Run it once after connecting, and whenever SKUs change in bulk.", run: "Sync all stock now", never: "Never run", last_run: "Last run {date}", shopify_skus: "Shopify SKUs", inventoros_skus: "Inventoros SKUs", matched: "Matched", pushed: "Pushed", failed: "Failed", untracked: "Not tracked in Shopify", only_in_shopify: "Only in Shopify", only_in_inventoros: "Only in Inventoros", sample: "First {count}:" }, re = { title: "Recent Shopify orders", empty: "No Shopify orders received yet.", shopify_order: "Shopify order", status: "Status", result: "Result", inventoros_order: "Inventoros order", retry: "Retry", statuses: { imported: "Imported", failed: "Failed", skipped: "Skipped", cancelled: "Cancelled" } }, E = {
-  nav: X,
-  permissions: Y,
-  card: Z,
-  page: ee,
-  status: te,
-  connection: oe,
-  sync: ne,
-  webhooks: se,
-  stock: ie,
-  orders: re
-}, ae = () => window.Inventoros?.plugin?.("shopify");
-function le(i, y) {
-  const f = i.split(".").reduce((_, p) => _ && typeof _ == "object" ? _[p] : void 0, E);
-  return typeof f != "string" ? i : f.replace(/\{(\w+)\}/g, (_, p) => y && p in y ? String(y[p]) : _);
+const ne = window.Inventoros.Vue, { BaseTransition: mo, BaseTransitionPropsValidators: fo, Comment: vo, DeprecationTypes: go, EffectScope: So, ErrorCodes: bo, ErrorTypeStrings: ko, Fragment: h, KeepAlive: wo, ReactiveEffect: Io, Static: Co, Suspense: zo, Teleport: Uo, Text: Ro, TrackOpTypes: $o, Transition: Po, TransitionGroup: xo, TriggerOpTypes: Vo, VueElement: To, __esModule: Do, assertNumber: Oo, callWithAsyncErrorHandling: Ao, callWithErrorHandling: Mo, camelize: No, capitalize: Eo, cloneVNode: Ko, compatUtils: qo, compile: Fo, computed: E, createApp: Lo, createBlock: P, createCommentVNode: p, createElementBlock: r, createElementVNode: t, createHydrationRenderer: Ho, createPropsRestProxy: Bo, createRenderer: Wo, createSSRApp: jo, createSlots: Go, createStaticVNode: Qo, createTextVNode: y, createVNode: u, customRef: Jo, defineAsyncComponent: Xo, defineComponent: Yo, defineCustomElement: Zo, defineEmits: es, defineExpose: ts, defineModel: os, defineOptions: ss, defineProps: ns, defineSSRCustomElement: is, defineSlots: as, devtools: rs, effect: ls, effectScope: cs, getCurrentInstance: ds, getCurrentScope: us, getCurrentWatcher: ps, getTransitionRawChildren: hs, guardReactiveProps: _s, h: ys, handleError: ms, hasInjectionContext: fs, hydrate: vs, hydrateOnIdle: gs, hydrateOnInteraction: Ss, hydrateOnMediaQuery: bs, hydrateOnVisible: ks, initCustomFormatter: ws, initDirectivesForSSR: Is, inject: Cs, isMemoSame: zs, isProxy: Us, isReactive: Rs, isReadonly: $s, isRef: Ps, isRuntimeOnly: xs, isShallow: Vs, isVNode: Ts, markRaw: Ds, mergeDefaults: Os, mergeModels: As, mergeProps: Ms, nextTick: Ns, nodeOps: Es, normalizeClass: Ks, normalizeProps: qs, normalizeStyle: Fs, onActivated: Ls, onBeforeMount: Hs, onBeforeUnmount: Bs, onBeforeUpdate: Ws, onDeactivated: js, onErrorCaptured: Gs, onMounted: Qs, onRenderTracked: Js, onRenderTriggered: Xs, onScopeDispose: Ys, onServerPrefetch: Zs, onUnmounted: en, onUpdated: tn, onWatcherCleanup: on, openBlock: a, patchProp: sn, popScopeId: nn, provide: an, proxyRefs: rn, pushScopeId: ln, queuePostFlushCb: cn, reactive: ie, readonly: dn, ref: B, registerRuntimeCompiler: un, render: pn, renderList: S, renderSlot: hn, resolveComponent: _n, resolveDirective: yn, resolveDynamicComponent: mn, resolveFilter: fn, resolveTransitionHooks: vn, setBlockTracking: gn, setDevtoolsHook: Sn, setTransitionHooks: bn, shallowReactive: kn, shallowReadonly: wn, shallowRef: In, ssrContextKey: Cn, ssrUtils: zn, stop: Un, toDisplayString: o, toHandlerKey: Rn, toHandlers: $n, toRaw: Pn, toRef: xn, toRefs: Vn, toValue: Tn, transformVNodeArgs: Dn, triggerRef: On, unref: e, useAttrs: An, useCssModule: Mn, useCssVars: Nn, useHost: En, useId: Kn, useModel: qn, useSSRContext: Fn, useShadowRoot: Ln, useSlots: Hn, useTemplateRef: Bn, useTransitionState: Wn, vModelCheckbox: L, vModelDynamic: jn, vModelRadio: Gn, vModelSelect: H, vModelText: T, vShow: ae, version: Qn, warn: Jn, watch: Xn, watchEffect: Yn, watchPostEffect: Zn, watchSyncEffect: ei, withAsyncContext: ti, withCtx: d, withDefaults: oi, withDirectives: w, withKeys: si, withMemo: ni, withModifiers: W, withScopeId: ii } = ne, re = { title: "Shopify" }, le = { manage: { label: "Manage Shopify", description: "Connect a Shopify store, change its sync settings and retry order imports" } }, ce = { title: "Shopify", description: "Import Shopify orders and push stock to your store." }, de = { title: "Shopify", description: "Shopify orders become Inventoros orders, and Inventoros stock is published to Shopify. Products are matched by SKU.", crumb: "Integrations" }, ue = { connected: "Connected to {shop}", not_connected: "Not connected", error: "Last error", acting_user: "Orders and stock changes are recorded as {name}." }, pe = { title: "Connection", subtitle: "The Shopify app's credentials, from the Dev Dashboard (App settings).", shop_domain: "Store address", shop_domain_hint: "For example my-store.myshopify.com", client_id: "Client ID", client_secret: "Client secret", client_secret_saved: "Saved. Leave empty to keep it.", api_version: "API version", scopes: "The app needs these scopes: {scopes}.", save: "Save and test connection", disconnect: "Disconnect", disconnect_confirm: "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted." }, he = { title: "Sync settings", import_orders: "Import Shopify orders", import_orders_hint: "New Shopify orders become Inventoros orders and take stock out; cancelling in Shopify cancels them here.", push_inventory: "Push stock to Shopify", push_inventory_hint: "Every stock change in Inventoros sets the available quantity in Shopify. Inventoros is the source of truth.", warehouse: "Default warehouse for Shopify orders", warehouse_default: "Default warehouse", locations: "Shopify locations", locations_hint: "Choose which Inventoros stock each Shopify location shows. Leave a location unsynced to manage its stock in Shopify. With several locations, give each its own warehouse.", location_unsynced: "Not synced", location_all: "All warehouses (total stock)", warehouse_hint: "Used when the order's Shopify location is not mapped to a warehouse.", location_hint: "Save the connection first to load the store's locations." }, _e = { title: "Order webhooks", subtitle: "Shopify notifies Inventoros of new and cancelled orders at this address. It must be public and HTTPS.", register: "Register webhooks in Shopify", registered: "Registered {date}", not_registered: "Not registered yet", copy: "Copy", copied: "Copied", checked: "Checked {date}" }, ye = { title: "Stock sync", subtitle: "Match every Shopify variant to Inventoros by SKU and push all quantities. Run it once after connecting, and whenever SKUs change in bulk.", run: "Sync all stock now", never: "Never run", last_run: "Last run {date}", shopify_skus: "Shopify SKUs", inventoros_skus: "Inventoros SKUs", matched: "Matched", pushed: "Pushed", failed: "Failed", untracked: "Not tracked in Shopify", only_in_shopify: "Only in Shopify", only_in_inventoros: "Only in Inventoros", sample: "First {count}:" }, me = { title: "Recent Shopify orders", empty: "No Shopify orders received yet.", shopify_order: "Shopify order", status: "Status", result: "Result", inventoros_order: "Inventoros order", retry: "Retry", statuses: { imported: "Imported", failed: "Failed", skipped: "Skipped", cancelled: "Cancelled" } }, fe = { title: "Order recovery", subtitle: "Every ten minutes Inventoros reads back the orders Shopify changed, so orders whose webhook was lost are still imported, and edits, fulfilments and refunds still apply. Missing webhooks are registered again.", last_run: "Last run {date}", never: "Not run yet", checked: "Orders checked", imported: "Imported", updated: "Updated", not_imported: "Not imported", ignored: "Older than the import window", webhooks_repaired: "Webhooks registered again: {topics}", from: "Import missing orders created since", from_hint: "Shopify keeps the last 60 days of orders available to apps.", run: "Recover orders" }, ve = { title: "Catalogue", subtitle: "Copy products between Shopify and Inventoros, matched by SKU. Products that already exist on the other side are never changed.", import_title: "Import from Shopify", import_hint: "Creates an Inventoros product for each Shopify product whose SKUs Inventoros does not have, with its options and variants.", with_stock: "Also import Shopify's available stock as opening stock", import: "Import products", publish_title: "Publish to Shopify", publish_hint: "Creates a Shopify product for each active Inventoros product whose SKUs Shopify does not have, with prices, barcodes and stock at the mapped locations.", status_draft: "As drafts", status_active: "As active products", publish: "Publish products", last_run: "Last run {date}", products: "Products", variants: "Variants", existing: "Already in Inventoros", already: "Already in Shopify", partial: "Partly in Shopify", no_sku: "Without SKU", failed: "Failed" }, j = {
+  nav: re,
+  permissions: le,
+  card: ce,
+  page: de,
+  status: ue,
+  connection: pe,
+  sync: he,
+  webhooks: _e,
+  stock: ye,
+  orders: me,
+  recovery: fe,
+  catalogue: ve
+}, ge = () => window.Inventoros?.plugin?.("shopify");
+function Se(i, b) {
+  const k = i.split(".").reduce((m, _) => m && typeof m == "object" ? m[_] : void 0, j);
+  return typeof k != "string" ? i : k.replace(/\{(\w+)\}/g, (m, _) => b && _ in b ? String(b[_]) : m);
 }
-function s(i, y = {}) {
-  const f = ae()?.i18n;
-  return f?.te?.(i) ? f.t(i, y) : le(i, y);
+function n(i, b = {}) {
+  const k = ge()?.i18n;
+  return k?.te?.(i) ? k.t(i, b) : Se(i, b);
 }
-const O = (i, y) => {
-  const f = i.__vccOpts || i;
-  for (const [_, p] of y)
-    f[_] = p;
-  return f;
-}, ce = { class: "shp-crumbs" }, de = { class: "shp-page" }, ue = {
+const G = (i, b) => {
+  const k = i.__vccOpts || i;
+  for (const [m, _] of b)
+    k[m] = _;
+  return k;
+}, be = { class: "shp-crumbs" }, ke = { class: "shp-page" }, we = {
   key: 0,
   class: "shp-alert",
   role: "alert"
-}, pe = { class: "shp-fields" }, he = { class: "shp-field" }, _e = { class: "shp-label" }, ye = ["placeholder"], fe = {
+}, Ie = { class: "shp-fields" }, Ce = { class: "shp-field" }, ze = { class: "shp-label" }, Ue = ["placeholder"], Re = {
   key: 0,
   class: "shp-error"
-}, ve = { class: "shp-field" }, me = { class: "shp-label" }, ge = {
+}, $e = { class: "shp-field" }, Pe = { class: "shp-label" }, xe = {
   key: 0,
   class: "shp-error"
-}, Se = { class: "shp-field" }, be = { class: "shp-label" }, ke = ["placeholder", "required"], we = {
+}, Ve = { class: "shp-field" }, Te = { class: "shp-label" }, De = ["placeholder", "required"], Oe = {
   key: 0,
   class: "shp-hint"
-}, Ce = {
+}, Ae = {
   key: 1,
   class: "shp-error"
-}, Ie = { class: "shp-field" }, ze = { class: "shp-label" }, Re = {
+}, Me = { class: "shp-field" }, Ne = { class: "shp-label" }, Ee = {
   key: 0,
   class: "shp-error"
-}, $e = { class: "shp-hint" }, Te = { class: "shp-fields" }, Ue = { class: "shp-check" }, xe = { class: "shp-label" }, Pe = { class: "shp-hint" }, Ve = { class: "shp-check" }, De = { class: "shp-label" }, Me = { class: "shp-hint" }, Ae = { class: "shp-field" }, Ee = { class: "shp-label" }, Oe = ["disabled"], Ne = { value: "" }, qe = ["value"], He = {
+}, Ke = { class: "shp-hint" }, qe = { class: "shp-fields" }, Fe = { class: "shp-check" }, Le = { class: "shp-label" }, He = { class: "shp-hint" }, Be = { class: "shp-check" }, We = { class: "shp-label" }, je = { class: "shp-hint" }, Ge = { class: "shp-field" }, Qe = { class: "shp-label" }, Je = { class: "shp-hint" }, Xe = {
   key: 0,
   class: "shp-hint"
-}, Ke = { class: "shp-field" }, Fe = { class: "shp-label" }, Be = { value: "" }, Le = ["value"], We = {
+}, Ye = { class: "shp-map-name" }, Ze = ["onUpdate:modelValue"], et = { value: "" }, tt = { value: "all" }, ot = ["value"], st = {
+  key: 1,
+  class: "shp-error"
+}, nt = { class: "shp-field" }, it = { class: "shp-label" }, at = { value: "" }, rt = ["value"], lt = { class: "shp-hint" }, ct = {
   key: 0,
   class: "shp-error"
-}, je = { class: "shp-actions" }, Ge = {
+}, dt = { class: "shp-actions" }, ut = {
   key: 1,
   class: "shp-hint"
-}, Qe = { class: "shp-url" }, Je = { class: "shp-hint" }, Xe = { class: "shp-hint" }, Ye = { class: "shp-stats" }, Ze = {
+}, pt = { class: "shp-url" }, ht = { class: "shp-hint" }, _t = { class: "shp-hint" }, yt = { class: "shp-stats" }, mt = {
   key: 0,
   class: "shp-details"
-}, et = { class: "shp-hint" }, tt = { class: "shp-skus" }, ot = { class: "shp-table-header" }, nt = {
+}, ft = { class: "shp-hint" }, vt = { class: "shp-skus" }, gt = { class: "shp-hint" }, St = { class: "shp-stats" }, bt = {
+  key: 0,
+  class: "shp-hint"
+}, kt = { class: "shp-field" }, wt = { class: "shp-label" }, It = ["min", "max"], Ct = { class: "shp-hint" }, zt = {
+  key: 0,
+  class: "shp-error"
+}, Ut = { class: "shp-columns" }, Rt = { class: "shp-subtitle" }, $t = { class: "shp-hint" }, Pt = { class: "shp-check shp-gap" }, xt = { class: "shp-label" }, Vt = { class: "shp-hint shp-gap" }, Tt = { class: "shp-stats shp-stats-compact" }, Dt = {
+  key: 0,
+  class: "shp-details"
+}, Ot = { class: "shp-subtitle" }, At = { class: "shp-hint" }, Mt = { value: "draft" }, Nt = { value: "active" }, Et = { class: "shp-hint shp-gap" }, Kt = { class: "shp-stats shp-stats-compact" }, qt = {
+  key: 0,
+  class: "shp-details"
+}, Ft = { class: "shp-table-header" }, Lt = {
   key: 0,
   class: "shp-empty"
-}, st = {
+}, Ht = {
   key: 1,
   class: "shp-table-wrap"
-}, it = { class: "shp-table" }, rt = { class: "shp-hint" }, at = { class: "shp-message" }, $ = "/p/shopify/actions", lt = {
+}, Bt = { class: "shp-table" }, Wt = { class: "shp-hint" }, jt = { class: "shp-message" }, z = "/p/shopify/actions", Gt = {
   __name: "SettingsPage",
   props: {
     title: { type: String, default: "Shopify" },
@@ -73,453 +90,607 @@ const O = (i, y) => {
   },
   setup(i) {
     const {
-      layouts: { AppLayout: y },
-      ui: { PageHeader: f, Card: _, CardHeader: p, Button: C, Badge: x },
-      Inertia: { Head: N, Link: q, router: H, useForm: K }
-    } = window.Inventoros, g = i, a = K({
-      shop_domain: g.connection?.shop_domain ?? "",
-      client_id: g.connection?.client_id ?? "",
+      layouts: { AppLayout: b },
+      ui: { PageHeader: k, Card: m, CardHeader: _, Button: I, Badge: K },
+      Inertia: { Head: Q, Link: J, router: X, useForm: D }
+    } = window.Inventoros, f = i, c = D({
+      shop_domain: f.connection?.shop_domain ?? "",
+      client_id: f.connection?.client_id ?? "",
       client_secret: "",
-      api_version: g.connection?.api_version ?? g.defaultApiVersion,
-      location_id: g.connection?.location_id ?? "",
-      warehouse_id: g.connection?.warehouse_id ?? "",
-      import_orders: g.connection?.import_orders ?? !0,
-      push_inventory: g.connection?.push_inventory ?? !0
-    }), I = D(null), P = D(!1), b = G(() => g.connection?.last_full_sync_summary ?? null);
-    function F() {
-      a.transform((m) => ({
-        ...m,
-        location_id: m.location_id || null,
-        warehouse_id: m.warehouse_id || null
-      })).post(`${$}/settings`, {
+      api_version: f.connection?.api_version ?? f.defaultApiVersion,
+      warehouse_id: f.connection?.warehouse_id ?? "",
+      import_orders: f.connection?.import_orders ?? !0,
+      push_inventory: f.connection?.push_inventory ?? !0
+    }), R = B(null), q = B(!1), F = ie(Object.fromEntries((f.connection?.locations ?? []).map((g) => {
+      const l = (f.connection?.location_map ?? []).find((s) => s.location_id === g.id);
+      return [g.id, l ? l.warehouse_id ?? "all" : ""];
+    }))), $ = D({ from: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10) }), O = D({ with_stock: !0 }), A = D({ status: "draft" }), M = E(() => f.connection?.orders_sync_summary ?? null), x = E(() => f.connection?.catalogue_import_summary ?? null), V = E(() => f.connection?.catalogue_publish_summary ?? null), Y = new Date(Date.now() - 59 * 864e5).toISOString().slice(0, 10), Z = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), C = E(() => f.connection?.last_full_sync_summary ?? null);
+    function ee() {
+      c.transform((g) => {
+        const l = { ...g, warehouse_id: g.warehouse_id || null };
+        return f.connection?.locations?.length && (l.location_map = Object.entries(F).filter(([, s]) => s !== "").map(([s, v]) => ({ location_id: s, warehouse_id: v === "all" ? null : v }))), l;
+      }).post(`${z}/settings`, {
         preserveScroll: !0,
-        onSuccess: () => a.reset("client_secret")
+        onSuccess: () => c.reset("client_secret")
       });
     }
-    function T(m, c, n, R = {}) {
-      I.value = m, H.visit(n, {
-        method: c,
+    function N(g, l, s, v = {}) {
+      R.value = g, X.visit(s, {
+        method: l,
         preserveScroll: !0,
-        ...R,
+        ...v,
         onFinish: () => {
-          I.value = null;
+          R.value = null;
         }
       });
     }
-    function B() {
-      window.confirm(s("connection.disconnect_confirm")) && T("disconnect", "delete", `${$}/connection`);
+    function te() {
+      window.confirm(n("connection.disconnect_confirm")) && N("disconnect", "delete", `${z}/connection`);
     }
-    async function L() {
+    async function oe() {
       try {
-        await navigator.clipboard.writeText(g.webhookUrl), P.value = !0, setTimeout(() => P.value = !1, 2e3);
+        await navigator.clipboard.writeText(f.webhookUrl), q.value = !0, setTimeout(() => q.value = !1, 2e3);
       } catch {
       }
     }
-    function V(m) {
-      return m ? new Date(m).toLocaleString() : "";
+    function U(g) {
+      return g ? new Date(g).toLocaleString() : "";
     }
-    const W = (m) => ({ imported: "success", failed: "danger", skipped: "warning", cancelled: "neutral" })[m] ?? "neutral";
-    return (m, c) => (r(), l(S, null, [
-      u(e(N), { title: i.title }, null, 8, ["title"]),
-      u(e(y), null, {
+    const se = (g) => ({ imported: "success", failed: "danger", skipped: "warning", cancelled: "neutral" })[g] ?? "neutral";
+    return (g, l) => (a(), r(h, null, [
+      u(e(Q), { title: i.title }, null, 8, ["title"]),
+      u(e(b), null, {
         header: d(() => [
-          t("div", ce, [
-            t("span", null, o(e(s)("page.crumb")), 1),
-            c[10] || (c[10] = t("span", null, "/", -1)),
+          t("div", be, [
+            t("span", null, o(e(n)("page.crumb")), 1),
+            l[15] || (l[15] = t("span", null, "/", -1)),
             t("strong", null, o(i.title), 1)
           ])
         ]),
         default: d(() => [
-          t("div", de, [
-            u(e(f), {
-              title: e(s)("page.title"),
-              description: e(s)("page.description")
+          t("div", ke, [
+            u(e(k), {
+              title: e(n)("page.title"),
+              description: e(n)("page.description")
             }, {
               actions: d(() => [
-                i.connection?.connected ? (r(), z(e(x), {
+                i.connection?.connected ? (a(), P(e(K), {
                   key: 0,
                   variant: "success",
                   dot: ""
                 }, {
                   default: d(() => [
-                    v(o(e(s)("status.connected", { shop: i.connection.shop_name })), 1)
+                    y(o(e(n)("status.connected", { shop: i.connection.shop_name })), 1)
                   ]),
                   _: 1
-                })) : (r(), z(e(x), {
+                })) : (a(), P(e(K), {
                   key: 1,
                   variant: "neutral",
                   dot: ""
                 }, {
                   default: d(() => [
-                    v(o(e(s)("status.not_connected")), 1)
+                    y(o(e(n)("status.not_connected")), 1)
                   ]),
                   _: 1
                 }))
               ]),
               _: 1
             }, 8, ["title", "description"]),
-            i.connection?.last_error ? (r(), l("div", ue, [
-              t("strong", null, o(e(s)("status.error")) + ":", 1),
-              v(" " + o(i.connection.last_error), 1)
-            ])) : h("", !0),
+            i.connection?.last_error ? (a(), r("div", we, [
+              t("strong", null, o(e(n)("status.error")) + ":", 1),
+              y(" " + o(i.connection.last_error), 1)
+            ])) : p("", !0),
             t("form", {
               class: "shp-grid",
-              onSubmit: J(F, ["prevent"])
+              onSubmit: W(ee, ["prevent"])
             }, [
-              u(e(_), null, {
+              u(e(m), null, {
                 default: d(() => [
-                  u(e(p), {
-                    title: e(s)("connection.title"),
-                    subtitle: e(s)("connection.subtitle")
+                  u(e(_), {
+                    title: e(n)("connection.title"),
+                    subtitle: e(n)("connection.subtitle")
                   }, null, 8, ["title", "subtitle"]),
-                  t("div", pe, [
-                    t("label", he, [
-                      t("span", _e, o(e(s)("connection.shop_domain")), 1),
-                      k(t("input", {
-                        "onUpdate:modelValue": c[0] || (c[0] = (n) => e(a).shop_domain = n),
+                  t("div", Ie, [
+                    t("label", Ce, [
+                      t("span", ze, o(e(n)("connection.shop_domain")), 1),
+                      w(t("input", {
+                        "onUpdate:modelValue": l[0] || (l[0] = (s) => e(c).shop_domain = s),
                         class: "shp-input",
                         type: "text",
                         autocomplete: "off",
-                        placeholder: e(s)("connection.shop_domain_hint"),
+                        placeholder: e(n)("connection.shop_domain_hint"),
                         required: ""
-                      }, null, 8, ye), [
-                        [U, e(a).shop_domain]
+                      }, null, 8, Ue), [
+                        [T, e(c).shop_domain]
                       ]),
-                      e(a).errors.shop_domain ? (r(), l("span", fe, o(e(a).errors.shop_domain), 1)) : h("", !0)
+                      e(c).errors.shop_domain ? (a(), r("span", Re, o(e(c).errors.shop_domain), 1)) : p("", !0)
                     ]),
-                    t("label", ve, [
-                      t("span", me, o(e(s)("connection.client_id")), 1),
-                      k(t("input", {
-                        "onUpdate:modelValue": c[1] || (c[1] = (n) => e(a).client_id = n),
+                    t("label", $e, [
+                      t("span", Pe, o(e(n)("connection.client_id")), 1),
+                      w(t("input", {
+                        "onUpdate:modelValue": l[1] || (l[1] = (s) => e(c).client_id = s),
                         class: "shp-input",
                         type: "text",
                         autocomplete: "off",
                         required: ""
                       }, null, 512), [
-                        [U, e(a).client_id]
+                        [T, e(c).client_id]
                       ]),
-                      e(a).errors.client_id ? (r(), l("span", ge, o(e(a).errors.client_id), 1)) : h("", !0)
+                      e(c).errors.client_id ? (a(), r("span", xe, o(e(c).errors.client_id), 1)) : p("", !0)
                     ]),
-                    t("label", Se, [
-                      t("span", be, o(e(s)("connection.client_secret")), 1),
-                      k(t("input", {
-                        "onUpdate:modelValue": c[2] || (c[2] = (n) => e(a).client_secret = n),
+                    t("label", Ve, [
+                      t("span", Te, o(e(n)("connection.client_secret")), 1),
+                      w(t("input", {
+                        "onUpdate:modelValue": l[2] || (l[2] = (s) => e(c).client_secret = s),
                         class: "shp-input",
                         type: "password",
                         autocomplete: "new-password",
                         placeholder: i.connection?.has_client_secret ? "••••••••" : "",
                         required: !i.connection?.has_client_secret
-                      }, null, 8, ke), [
-                        [U, e(a).client_secret]
+                      }, null, 8, De), [
+                        [T, e(c).client_secret]
                       ]),
-                      i.connection?.has_client_secret ? (r(), l("span", we, o(e(s)("connection.client_secret_saved")), 1)) : h("", !0),
-                      e(a).errors.client_secret ? (r(), l("span", Ce, o(e(a).errors.client_secret), 1)) : h("", !0)
+                      i.connection?.has_client_secret ? (a(), r("span", Oe, o(e(n)("connection.client_secret_saved")), 1)) : p("", !0),
+                      e(c).errors.client_secret ? (a(), r("span", Ae, o(e(c).errors.client_secret), 1)) : p("", !0)
                     ]),
-                    t("label", Ie, [
-                      t("span", ze, o(e(s)("connection.api_version")), 1),
-                      k(t("input", {
-                        "onUpdate:modelValue": c[3] || (c[3] = (n) => e(a).api_version = n),
+                    t("label", Me, [
+                      t("span", Ne, o(e(n)("connection.api_version")), 1),
+                      w(t("input", {
+                        "onUpdate:modelValue": l[3] || (l[3] = (s) => e(c).api_version = s),
                         class: "shp-input shp-input-short",
                         type: "text",
                         pattern: "\\d{4}-\\d{2}"
                       }, null, 512), [
-                        [U, e(a).api_version]
+                        [T, e(c).api_version]
                       ]),
-                      e(a).errors.api_version ? (r(), l("span", Re, o(e(a).errors.api_version), 1)) : h("", !0)
+                      e(c).errors.api_version ? (a(), r("span", Ee, o(e(c).errors.api_version), 1)) : p("", !0)
                     ]),
-                    t("p", $e, o(e(s)("connection.scopes", { scopes: i.requiredScopes.join(", ") })), 1)
+                    t("p", Ke, o(e(n)("connection.scopes", { scopes: i.requiredScopes.join(", ") })), 1)
                   ])
                 ]),
                 _: 1
               }),
-              u(e(_), null, {
+              u(e(m), null, {
                 default: d(() => [
-                  u(e(p), {
-                    title: e(s)("sync.title")
+                  u(e(_), {
+                    title: e(n)("sync.title")
                   }, null, 8, ["title"]),
-                  t("div", Te, [
-                    t("label", Ue, [
-                      k(t("input", {
-                        "onUpdate:modelValue": c[4] || (c[4] = (n) => e(a).import_orders = n),
+                  t("div", qe, [
+                    t("label", Fe, [
+                      w(t("input", {
+                        "onUpdate:modelValue": l[4] || (l[4] = (s) => e(c).import_orders = s),
                         type: "checkbox"
                       }, null, 512), [
-                        [M, e(a).import_orders]
+                        [L, e(c).import_orders]
                       ]),
                       t("span", null, [
-                        t("span", xe, o(e(s)("sync.import_orders")), 1),
-                        t("span", Pe, o(e(s)("sync.import_orders_hint")), 1)
+                        t("span", Le, o(e(n)("sync.import_orders")), 1),
+                        t("span", He, o(e(n)("sync.import_orders_hint")), 1)
                       ])
                     ]),
-                    t("label", Ve, [
-                      k(t("input", {
-                        "onUpdate:modelValue": c[5] || (c[5] = (n) => e(a).push_inventory = n),
+                    t("label", Be, [
+                      w(t("input", {
+                        "onUpdate:modelValue": l[5] || (l[5] = (s) => e(c).push_inventory = s),
                         type: "checkbox"
                       }, null, 512), [
-                        [M, e(a).push_inventory]
+                        [L, e(c).push_inventory]
                       ]),
                       t("span", null, [
-                        t("span", De, o(e(s)("sync.push_inventory")), 1),
-                        t("span", Me, o(e(s)("sync.push_inventory_hint")), 1)
+                        t("span", We, o(e(n)("sync.push_inventory")), 1),
+                        t("span", je, o(e(n)("sync.push_inventory_hint")), 1)
                       ])
                     ]),
-                    t("label", Ae, [
-                      t("span", Ee, o(e(s)("sync.location")), 1),
-                      k(t("select", {
-                        "onUpdate:modelValue": c[6] || (c[6] = (n) => e(a).location_id = n),
-                        class: "shp-input",
-                        disabled: !i.connection?.locations?.length
+                    t("div", Ge, [
+                      t("span", Qe, o(e(n)("sync.locations")), 1),
+                      t("span", Je, o(e(n)("sync.locations_hint")), 1),
+                      i.connection?.locations?.length ? p("", !0) : (a(), r("p", Xe, o(e(n)("sync.location_hint")), 1)),
+                      (a(!0), r(h, null, S(i.connection?.locations ?? [], (s) => (a(), r("div", {
+                        key: s.id,
+                        class: "shp-map-row"
                       }, [
-                        t("option", Ne, o(e(s)("sync.location_none")), 1),
-                        (r(!0), l(S, null, w(i.connection?.locations ?? [], (n) => (r(), l("option", {
-                          key: n.id,
-                          value: n.id
-                        }, o(n.name), 9, qe))), 128))
-                      ], 8, Oe), [
-                        [A, e(a).location_id]
-                      ]),
-                      i.connection?.locations?.length ? h("", !0) : (r(), l("span", He, o(e(s)("sync.location_hint")), 1))
+                        t("span", Ye, o(s.name), 1),
+                        w(t("select", {
+                          "onUpdate:modelValue": (v) => F[s.id] = v,
+                          class: "shp-input"
+                        }, [
+                          t("option", et, o(e(n)("sync.location_unsynced")), 1),
+                          t("option", tt, o(e(n)("sync.location_all")), 1),
+                          (a(!0), r(h, null, S(i.warehouses, (v) => (a(), r("option", {
+                            key: v.id,
+                            value: v.id
+                          }, o(v.name), 9, ot))), 128))
+                        ], 8, Ze), [
+                          [H, F[s.id]]
+                        ])
+                      ]))), 128)),
+                      e(c).errors.location_map ? (a(), r("span", st, o(e(c).errors.location_map), 1)) : p("", !0)
                     ]),
-                    t("label", Ke, [
-                      t("span", Fe, o(e(s)("sync.warehouse")), 1),
-                      k(t("select", {
-                        "onUpdate:modelValue": c[7] || (c[7] = (n) => e(a).warehouse_id = n),
+                    t("label", nt, [
+                      t("span", it, o(e(n)("sync.warehouse")), 1),
+                      w(t("select", {
+                        "onUpdate:modelValue": l[6] || (l[6] = (s) => e(c).warehouse_id = s),
                         class: "shp-input"
                       }, [
-                        t("option", Be, o(e(s)("sync.warehouse_default")), 1),
-                        (r(!0), l(S, null, w(i.warehouses, (n) => (r(), l("option", {
-                          key: n.id,
-                          value: n.id
-                        }, o(n.name), 9, Le))), 128))
+                        t("option", at, o(e(n)("sync.warehouse_default")), 1),
+                        (a(!0), r(h, null, S(i.warehouses, (s) => (a(), r("option", {
+                          key: s.id,
+                          value: s.id
+                        }, o(s.name), 9, rt))), 128))
                       ], 512), [
-                        [A, e(a).warehouse_id]
+                        [H, e(c).warehouse_id]
                       ]),
-                      e(a).errors.warehouse_id ? (r(), l("span", We, o(e(a).errors.warehouse_id), 1)) : h("", !0)
+                      t("span", lt, o(e(n)("sync.warehouse_hint")), 1),
+                      e(c).errors.warehouse_id ? (a(), r("span", ct, o(e(c).errors.warehouse_id), 1)) : p("", !0)
                     ])
                   ])
                 ]),
                 _: 1
               }),
-              t("div", je, [
-                u(e(C), {
+              t("div", dt, [
+                u(e(I), {
                   type: "submit",
-                  loading: e(a).processing
+                  loading: e(c).processing
                 }, {
                   default: d(() => [
-                    v(o(e(s)("connection.save")), 1)
+                    y(o(e(n)("connection.save")), 1)
                   ]),
                   _: 1
                 }, 8, ["loading"]),
-                i.connection ? (r(), z(e(C), {
+                i.connection ? (a(), P(e(I), {
                   key: 0,
                   variant: "ghost",
-                  loading: I.value === "disconnect",
-                  onClick: B
+                  loading: R.value === "disconnect",
+                  onClick: te
                 }, {
                   default: d(() => [
-                    v(o(e(s)("connection.disconnect")), 1)
+                    y(o(e(n)("connection.disconnect")), 1)
                   ]),
                   _: 1
-                }, 8, ["loading"])) : h("", !0),
-                i.connection?.acting_user ? (r(), l("span", Ge, o(e(s)("status.acting_user", { name: i.connection.acting_user })), 1)) : h("", !0)
+                }, 8, ["loading"])) : p("", !0),
+                i.connection?.acting_user ? (a(), r("span", ut, o(e(n)("status.acting_user", { name: i.connection.acting_user })), 1)) : p("", !0)
               ])
             ], 32),
-            i.connection ? (r(), l(S, { key: 1 }, [
-              u(e(_), { class: "shp-section" }, {
+            i.connection ? (a(), r(h, { key: 1 }, [
+              u(e(m), { class: "shp-section" }, {
                 default: d(() => [
-                  u(e(p), {
-                    title: e(s)("webhooks.title"),
-                    subtitle: e(s)("webhooks.subtitle")
+                  u(e(_), {
+                    title: e(n)("webhooks.title"),
+                    subtitle: e(n)("webhooks.subtitle")
                   }, {
                     actions: d(() => [
-                      u(e(C), {
+                      u(e(I), {
                         size: "sm",
                         disabled: !i.connection.connected,
-                        loading: I.value === "webhooks",
-                        onClick: c[8] || (c[8] = (n) => T("webhooks", "post", `${$}/webhooks`))
+                        loading: R.value === "webhooks",
+                        onClick: l[7] || (l[7] = (s) => N("webhooks", "post", `${z}/webhooks`))
                       }, {
                         default: d(() => [
-                          v(o(e(s)("webhooks.register")), 1)
+                          y(o(e(n)("webhooks.register")), 1)
                         ]),
                         _: 1
                       }, 8, ["disabled", "loading"])
                     ]),
                     _: 1
                   }, 8, ["title", "subtitle"]),
-                  t("div", Qe, [
+                  t("div", pt, [
                     t("code", null, o(i.webhookUrl), 1),
-                    u(e(C), {
+                    u(e(I), {
                       size: "xs",
                       variant: "outline",
-                      onClick: L
+                      onClick: oe
                     }, {
                       default: d(() => [
-                        v(o(P.value ? e(s)("webhooks.copied") : e(s)("webhooks.copy")), 1)
+                        y(o(q.value ? e(n)("webhooks.copied") : e(n)("webhooks.copy")), 1)
                       ]),
                       _: 1
                     })
                   ]),
-                  t("p", Je, o(i.connection.webhooks_registered_at ? e(s)("webhooks.registered", { date: V(i.connection.webhooks_registered_at) }) : e(s)("webhooks.not_registered")), 1)
+                  t("p", ht, [
+                    y(o(i.connection.webhooks_registered_at ? e(n)("webhooks.registered", { date: U(i.connection.webhooks_registered_at) }) : e(n)("webhooks.not_registered")) + " ", 1),
+                    i.connection.webhooks_checked_at ? (a(), r(h, { key: 0 }, [
+                      y(" · " + o(e(n)("webhooks.checked", { date: U(i.connection.webhooks_checked_at) })), 1)
+                    ], 64)) : p("", !0)
+                  ])
                 ]),
                 _: 1
               }),
-              u(e(_), { class: "shp-section" }, {
+              u(e(m), { class: "shp-section" }, {
                 default: d(() => [
-                  u(e(p), {
-                    title: e(s)("stock.title"),
-                    subtitle: e(s)("stock.subtitle")
+                  u(e(_), {
+                    title: e(n)("stock.title"),
+                    subtitle: e(n)("stock.subtitle")
                   }, {
                     actions: d(() => [
-                      u(e(C), {
+                      u(e(I), {
                         size: "sm",
-                        disabled: !i.connection.connected || !i.connection.push_inventory || !i.connection.location_id,
-                        loading: I.value === "sync",
-                        onClick: c[9] || (c[9] = (n) => T("sync", "post", `${$}/sync`))
+                        disabled: !i.connection.connected || !i.connection.push_inventory || !i.connection.location_map?.length,
+                        loading: R.value === "sync",
+                        onClick: l[8] || (l[8] = (s) => N("sync", "post", `${z}/sync`))
                       }, {
                         default: d(() => [
-                          v(o(e(s)("stock.run")), 1)
+                          y(o(e(n)("stock.run")), 1)
                         ]),
                         _: 1
                       }, 8, ["disabled", "loading"])
                     ]),
                     _: 1
                   }, 8, ["title", "subtitle"]),
-                  t("p", Xe, o(i.connection.last_full_sync_at ? e(s)("stock.last_run", { date: V(i.connection.last_full_sync_at) }) : e(s)("stock.never")), 1),
-                  b.value ? (r(), l(S, { key: 0 }, [
-                    t("dl", Ye, [
-                      (r(), l(S, null, w(["shopify_skus", "inventoros_skus", "matched", "pushed", "failed", "untracked", "only_in_shopify", "only_in_inventoros"], (n) => t("div", { key: n }, [
-                        t("dt", null, o(e(s)(`stock.${n}`)), 1),
-                        t("dd", null, o(b.value[n] ?? 0), 1)
+                  t("p", _t, o(i.connection.last_full_sync_at ? e(n)("stock.last_run", { date: U(i.connection.last_full_sync_at) }) : e(n)("stock.never")), 1),
+                  C.value ? (a(), r(h, { key: 0 }, [
+                    t("dl", yt, [
+                      (a(), r(h, null, S(["shopify_skus", "inventoros_skus", "matched", "pushed", "failed", "untracked", "only_in_shopify", "only_in_inventoros"], (s) => t("div", { key: s }, [
+                        t("dt", null, o(e(n)(`stock.${s}`)), 1),
+                        t("dd", null, o(C.value[s] ?? 0), 1)
                       ])), 64))
                     ]),
-                    b.value.failed_sample?.length ? (r(), l("details", Ze, [
-                      t("summary", null, o(e(s)("stock.failed")) + " (" + o(b.value.failed) + ")", 1),
+                    C.value.failed_sample?.length ? (a(), r("details", mt, [
+                      t("summary", null, o(e(n)("stock.failed")) + " (" + o(C.value.failed) + ")", 1),
                       t("ul", null, [
-                        (r(!0), l(S, null, w(b.value.failed_sample, (n) => (r(), l("li", {
-                          key: n.sku
+                        (a(!0), r(h, null, S(C.value.failed_sample, (s) => (a(), r("li", {
+                          key: s.sku
                         }, [
-                          t("code", null, o(n.sku), 1),
-                          v(": " + o(n.error), 1)
+                          t("code", null, o(s.sku), 1),
+                          y(": " + o(s.error), 1)
                         ]))), 128))
                       ])
-                    ])) : h("", !0),
-                    (r(), l(S, null, w(["untracked", "only_in_shopify", "only_in_inventoros"], (n) => k(t("details", {
-                      key: n,
+                    ])) : p("", !0),
+                    (a(), r(h, null, S(["untracked", "only_in_shopify", "only_in_inventoros"], (s) => w(t("details", {
+                      key: s,
                       class: "shp-details"
                     }, [
-                      t("summary", null, o(e(s)(`stock.${n}`)) + " (" + o(b.value[n]) + ")", 1),
-                      t("p", et, o(e(s)("stock.sample", { count: b.value[`${n}_sample`]?.length ?? 0 })), 1),
-                      t("p", tt, [
-                        (r(!0), l(S, null, w(b.value[`${n}_sample`] ?? [], (R) => (r(), l("code", { key: R }, o(R), 1))), 128))
+                      t("summary", null, o(e(n)(`stock.${s}`)) + " (" + o(C.value[s]) + ")", 1),
+                      t("p", ft, o(e(n)("stock.sample", { count: C.value[`${s}_sample`]?.length ?? 0 })), 1),
+                      t("p", vt, [
+                        (a(!0), r(h, null, S(C.value[`${s}_sample`] ?? [], (v) => (a(), r("code", { key: v }, o(v), 1))), 128))
                       ])
                     ], 512), [
-                      [Q, b.value[`${n}_sample`]?.length]
+                      [ae, C.value[`${s}_sample`]?.length]
                     ])), 64))
-                  ], 64)) : h("", !0)
+                  ], 64)) : p("", !0)
                 ]),
                 _: 1
               }),
-              u(e(_), {
+              u(e(m), { class: "shp-section" }, {
+                default: d(() => [
+                  u(e(_), {
+                    title: e(n)("recovery.title"),
+                    subtitle: e(n)("recovery.subtitle")
+                  }, null, 8, ["title", "subtitle"]),
+                  t("p", gt, o(i.connection.orders_synced_at ? e(n)("recovery.last_run", { date: U(i.connection.orders_synced_at) }) : e(n)("recovery.never")), 1),
+                  M.value ? (a(), r(h, { key: 0 }, [
+                    t("dl", St, [
+                      (a(), r(h, null, S(["checked", "imported", "updated", "not_imported"], (s) => t("div", { key: s }, [
+                        t("dt", null, o(e(n)(`recovery.${s}`)), 1),
+                        t("dd", null, o(M.value[s] ?? 0), 1)
+                      ])), 64))
+                    ]),
+                    M.value.webhooks_repaired?.length ? (a(), r("p", bt, o(e(n)("recovery.webhooks_repaired", { topics: M.value.webhooks_repaired.join(", ") })), 1)) : p("", !0)
+                  ], 64)) : p("", !0),
+                  t("form", {
+                    class: "shp-inline",
+                    onSubmit: l[10] || (l[10] = W((s) => e($).post(`${z}/recover`, { preserveScroll: !0 }), ["prevent"]))
+                  }, [
+                    t("label", kt, [
+                      t("span", wt, o(e(n)("recovery.from")), 1),
+                      w(t("input", {
+                        "onUpdate:modelValue": l[9] || (l[9] = (s) => e($).from = s),
+                        class: "shp-input shp-input-short",
+                        type: "date",
+                        min: e(Y),
+                        max: e(Z),
+                        required: ""
+                      }, null, 8, It), [
+                        [T, e($).from]
+                      ]),
+                      t("span", Ct, o(e(n)("recovery.from_hint")), 1),
+                      e($).errors.from ? (a(), r("span", zt, o(e($).errors.from), 1)) : p("", !0)
+                    ]),
+                    u(e(I), {
+                      type: "submit",
+                      size: "sm",
+                      disabled: !i.connection.connected || !i.connection.import_orders,
+                      loading: e($).processing
+                    }, {
+                      default: d(() => [
+                        y(o(e(n)("recovery.run")), 1)
+                      ]),
+                      _: 1
+                    }, 8, ["disabled", "loading"])
+                  ], 32)
+                ]),
+                _: 1
+              }),
+              u(e(m), { class: "shp-section" }, {
+                default: d(() => [
+                  u(e(_), {
+                    title: e(n)("catalogue.title"),
+                    subtitle: e(n)("catalogue.subtitle")
+                  }, null, 8, ["title", "subtitle"]),
+                  t("div", Ut, [
+                    t("div", null, [
+                      t("h4", Rt, o(e(n)("catalogue.import_title")), 1),
+                      t("p", $t, o(e(n)("catalogue.import_hint")), 1),
+                      t("label", Pt, [
+                        w(t("input", {
+                          "onUpdate:modelValue": l[11] || (l[11] = (s) => e(O).with_stock = s),
+                          type: "checkbox"
+                        }, null, 512), [
+                          [L, e(O).with_stock]
+                        ]),
+                        t("span", xt, o(e(n)("catalogue.with_stock")), 1)
+                      ]),
+                      u(e(I), {
+                        size: "sm",
+                        disabled: !i.connection.connected,
+                        loading: e(O).processing,
+                        onClick: l[12] || (l[12] = (s) => e(O).post(`${z}/catalogue/import`, { preserveScroll: !0 }))
+                      }, {
+                        default: d(() => [
+                          y(o(e(n)("catalogue.import")), 1)
+                        ]),
+                        _: 1
+                      }, 8, ["disabled", "loading"]),
+                      x.value ? (a(), r(h, { key: 0 }, [
+                        t("p", Vt, o(e(n)("catalogue.last_run", { date: U(x.value.finished_at) })), 1),
+                        t("dl", Tt, [
+                          (a(), r(h, null, S(["products", "variants", "existing", "no_sku", "failed"], (s) => t("div", { key: s }, [
+                            t("dt", null, o(e(n)(`catalogue.${s}`)), 1),
+                            t("dd", null, o(x.value[s] ?? 0), 1)
+                          ])), 64))
+                        ]),
+                        x.value.failed_sample?.length ? (a(), r("details", Dt, [
+                          t("summary", null, o(e(n)("catalogue.failed")), 1),
+                          t("ul", null, [
+                            (a(!0), r(h, null, S(x.value.failed_sample, (s) => (a(), r("li", { key: s }, o(s), 1))), 128))
+                          ])
+                        ])) : p("", !0)
+                      ], 64)) : p("", !0)
+                    ]),
+                    t("div", null, [
+                      t("h4", Ot, o(e(n)("catalogue.publish_title")), 1),
+                      t("p", At, o(e(n)("catalogue.publish_hint")), 1),
+                      w(t("select", {
+                        "onUpdate:modelValue": l[13] || (l[13] = (s) => e(A).status = s),
+                        class: "shp-input shp-input-short shp-gap"
+                      }, [
+                        t("option", Mt, o(e(n)("catalogue.status_draft")), 1),
+                        t("option", Nt, o(e(n)("catalogue.status_active")), 1)
+                      ], 512), [
+                        [H, e(A).status]
+                      ]),
+                      u(e(I), {
+                        size: "sm",
+                        disabled: !i.connection.connected || !i.connection.location_map?.length,
+                        loading: e(A).processing,
+                        onClick: l[14] || (l[14] = (s) => e(A).post(`${z}/catalogue/publish`, { preserveScroll: !0 }))
+                      }, {
+                        default: d(() => [
+                          y(o(e(n)("catalogue.publish")), 1)
+                        ]),
+                        _: 1
+                      }, 8, ["disabled", "loading"]),
+                      V.value ? (a(), r(h, { key: 0 }, [
+                        t("p", Et, o(e(n)("catalogue.last_run", { date: U(V.value.finished_at) })), 1),
+                        t("dl", Kt, [
+                          (a(), r(h, null, S(["products", "variants", "already", "partial", "no_sku", "failed"], (s) => t("div", { key: s }, [
+                            t("dt", null, o(e(n)(`catalogue.${s}`)), 1),
+                            t("dd", null, o(V.value[s] ?? 0), 1)
+                          ])), 64))
+                        ]),
+                        V.value.failed_sample?.length ? (a(), r("details", qt, [
+                          t("summary", null, o(e(n)("catalogue.failed")), 1),
+                          t("ul", null, [
+                            (a(!0), r(h, null, S(V.value.failed_sample, (s) => (a(), r("li", { key: s }, o(s), 1))), 128))
+                          ])
+                        ])) : p("", !0)
+                      ], 64)) : p("", !0)
+                    ])
+                  ])
+                ]),
+                _: 1
+              }),
+              u(e(m), {
                 class: "shp-section",
                 padded: !1
               }, {
                 default: d(() => [
-                  t("div", ot, [
-                    u(e(p), {
-                      title: e(s)("orders.title")
+                  t("div", Ft, [
+                    u(e(_), {
+                      title: e(n)("orders.title")
                     }, null, 8, ["title"])
                   ]),
-                  i.orders.length ? (r(), l("div", st, [
-                    t("table", it, [
+                  i.orders.length ? (a(), r("div", Ht, [
+                    t("table", Bt, [
                       t("thead", null, [
                         t("tr", null, [
-                          t("th", null, o(e(s)("orders.shopify_order")), 1),
-                          t("th", null, o(e(s)("orders.status")), 1),
-                          t("th", null, o(e(s)("orders.result")), 1),
-                          t("th", null, o(e(s)("orders.inventoros_order")), 1),
-                          c[11] || (c[11] = t("th", null, null, -1))
+                          t("th", null, o(e(n)("orders.shopify_order")), 1),
+                          t("th", null, o(e(n)("orders.status")), 1),
+                          t("th", null, o(e(n)("orders.result")), 1),
+                          t("th", null, o(e(n)("orders.inventoros_order")), 1),
+                          l[16] || (l[16] = t("th", null, null, -1))
                         ])
                       ]),
                       t("tbody", null, [
-                        (r(!0), l(S, null, w(i.orders, (n) => (r(), l("tr", {
-                          key: n.id
+                        (a(!0), r(h, null, S(i.orders, (s) => (a(), r("tr", {
+                          key: s.id
                         }, [
                           t("td", null, [
-                            t("strong", null, o(n.name), 1),
-                            t("span", rt, o(V(n.updated_at)), 1)
+                            t("strong", null, o(s.name), 1),
+                            t("span", Wt, o(U(s.updated_at)), 1)
                           ]),
                           t("td", null, [
-                            u(e(x), {
-                              variant: W(n.status),
+                            u(e(K), {
+                              variant: se(s.status),
                               size: "sm"
                             }, {
                               default: d(() => [
-                                v(o(e(s)(`orders.statuses.${n.status}`)), 1)
+                                y(o(e(n)(`orders.statuses.${s.status}`)), 1)
                               ]),
                               _: 2
                             }, 1032, ["variant"])
                           ]),
-                          t("td", at, o(n.message), 1),
+                          t("td", jt, o(s.message), 1),
                           t("td", null, [
-                            n.order_url ? (r(), z(e(q), {
+                            s.order_url ? (a(), P(e(J), {
                               key: 0,
-                              href: n.order_url
+                              href: s.order_url
                             }, {
                               default: d(() => [
-                                v(o(n.order_number), 1)
+                                y(o(s.order_number), 1)
                               ]),
                               _: 2
-                            }, 1032, ["href"])) : h("", !0)
+                            }, 1032, ["href"])) : p("", !0)
                           ]),
                           t("td", null, [
-                            n.retryable ? (r(), z(e(C), {
+                            s.retryable ? (a(), P(e(I), {
                               key: 0,
                               size: "xs",
                               variant: "outline",
-                              loading: I.value === `retry-${n.id}`,
-                              onClick: (R) => T(`retry-${n.id}`, "post", `${$}/orders/${n.id}/retry`)
+                              loading: R.value === `retry-${s.id}`,
+                              onClick: (v) => N(`retry-${s.id}`, "post", `${z}/orders/${s.id}/retry`)
                             }, {
                               default: d(() => [
-                                v(o(e(s)("orders.retry")), 1)
+                                y(o(e(n)("orders.retry")), 1)
                               ]),
                               _: 1
-                            }, 8, ["loading", "onClick"])) : h("", !0)
+                            }, 8, ["loading", "onClick"])) : p("", !0)
                           ])
                         ]))), 128))
                       ])
                     ])
-                  ])) : (r(), l("p", nt, o(e(s)("orders.empty")), 1))
+                  ])) : (a(), r("p", Lt, o(e(n)("orders.empty")), 1))
                 ]),
                 _: 1
               })
-            ], 64)) : h("", !0)
+            ], 64)) : p("", !0)
           ])
         ]),
         _: 1
       })
     ], 64));
   }
-}, ct = /* @__PURE__ */ O(lt, [["__scopeId", "data-v-296e6071"]]), dt = { class: "shp-card" }, ut = { class: "shp-card-body" }, pt = { class: "shp-card-title" }, ht = { class: "shp-card-text" }, _t = {
+}, Qt = /* @__PURE__ */ G(Gt, [["__scopeId", "data-v-89d259f8"]]), Jt = { class: "shp-card" }, Xt = { class: "shp-card-body" }, Yt = { class: "shp-card-title" }, Zt = { class: "shp-card-text" }, eo = {
   __name: "ShopifySettingsCard",
   props: {
     url: { type: String, required: !0 }
   },
   setup(i) {
     const {
-      ui: { Card: y },
-      Inertia: { Link: f }
+      ui: { Card: b },
+      Inertia: { Link: k }
     } = window.Inventoros;
-    return (_, p) => (r(), z(e(f), { href: i.url }, {
+    return (m, _) => (a(), P(e(k), { href: i.url }, {
       default: d(() => [
-        u(e(y), { hoverable: "" }, {
+        u(e(b), { hoverable: "" }, {
           default: d(() => [
-            t("div", dt, [
-              p[0] || (p[0] = t("span", {
+            t("div", Jt, [
+              _[0] || (_[0] = t("span", {
                 class: "shp-card-icon",
                 "aria-hidden": "true"
               }, "S", -1)),
-              t("div", ut, [
-                t("h3", pt, o(e(s)("card.title")), 1),
-                t("p", ht, o(e(s)("card.description")), 1)
+              t("div", Xt, [
+                t("h3", Yt, o(e(n)("card.title")), 1),
+                t("p", Zt, o(e(n)("card.description")), 1)
               ])
             ])
           ]),
@@ -529,21 +700,23 @@ const O = (i, y) => {
       _: 1
     }, 8, ["href"]));
   }
-}, yt = /* @__PURE__ */ O(_t, [["__scopeId", "data-v-0691ef2f"]]), ft = { title: "Shopify" }, vt = { manage: { label: "Gestire Shopify", description: "Collegare un negozio Shopify, modificarne le impostazioni di sincronizzazione e ritentare l'importazione degli ordini" } }, mt = { title: "Shopify", description: "Importa gli ordini Shopify e pubblica le giacenze nel negozio." }, gt = { title: "Shopify", description: "Gli ordini Shopify diventano ordini Inventoros e le giacenze di Inventoros vengono pubblicate su Shopify. I prodotti sono abbinati per SKU.", crumb: "Integrazioni" }, St = { connected: "Collegato a {shop}", not_connected: "Non collegato", error: "Ultimo errore", acting_user: "Ordini e movimenti di stock sono registrati come {name}." }, bt = { title: "Connessione", subtitle: "Le credenziali dell'app Shopify, dal Dev Dashboard (App settings).", shop_domain: "Indirizzo del negozio", shop_domain_hint: "Per esempio mio-negozio.myshopify.com", client_id: "Client ID", client_secret: "Client secret", client_secret_saved: "Salvato. Lascia vuoto per mantenerlo.", api_version: "Versione API", scopes: "L'app richiede questi scope: {scopes}.", save: "Salva e prova la connessione", disconnect: "Scollega", disconnect_confirm: "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate." }, kt = { title: "Impostazioni di sincronizzazione", import_orders: "Importa gli ordini Shopify", import_orders_hint: "I nuovi ordini Shopify diventano ordini Inventoros e scalano lo stock; annullarli in Shopify li annulla anche qui.", push_inventory: "Pubblica le giacenze su Shopify", push_inventory_hint: "Ogni movimento di stock in Inventoros imposta la quantità disponibile su Shopify. Inventoros è la fonte di verità.", location: "Sede Shopify", location_none: "Scegli una sede", location_hint: "Salva prima la connessione per caricare le sedi del negozio.", warehouse: "Magazzino Inventoros per gli ordini Shopify", warehouse_default: "Magazzino predefinito" }, wt = { title: "Webhook degli ordini", subtitle: "Shopify avvisa Inventoros dei nuovi ordini e di quelli annullati a questo indirizzo. Deve essere pubblico e HTTPS.", register: "Registra i webhook su Shopify", registered: "Registrati il {date}", not_registered: "Non ancora registrati", copy: "Copia", copied: "Copiato" }, Ct = { title: "Sincronizzazione giacenze", subtitle: "Abbina ogni variante Shopify a Inventoros tramite SKU e pubblica tutte le quantità. Eseguila una volta dopo il collegamento e ogni volta che cambi molti SKU.", run: "Sincronizza tutte le giacenze", never: "Mai eseguita", last_run: "Ultima esecuzione {date}", shopify_skus: "SKU su Shopify", inventoros_skus: "SKU su Inventoros", matched: "Abbinati", pushed: "Pubblicati", failed: "Falliti", untracked: "Non tracciati su Shopify", only_in_shopify: "Solo su Shopify", only_in_inventoros: "Solo su Inventoros", sample: "Primi {count}:" }, It = { title: "Ordini Shopify recenti", empty: "Nessun ordine Shopify ricevuto finora.", shopify_order: "Ordine Shopify", status: "Stato", result: "Esito", inventoros_order: "Ordine Inventoros", retry: "Riprova", statuses: { imported: "Importato", failed: "Fallito", skipped: "Saltato", cancelled: "Annullato" } }, zt = {
-  nav: ft,
-  permissions: vt,
-  card: mt,
-  page: gt,
-  status: St,
-  connection: bt,
-  sync: kt,
-  webhooks: wt,
-  stock: Ct,
-  orders: It
+}, to = /* @__PURE__ */ G(eo, [["__scopeId", "data-v-0691ef2f"]]), oo = { title: "Shopify" }, so = { manage: { label: "Gestire Shopify", description: "Collegare un negozio Shopify, modificarne le impostazioni di sincronizzazione e ritentare l'importazione degli ordini" } }, no = { title: "Shopify", description: "Importa gli ordini Shopify e pubblica le giacenze nel negozio." }, io = { title: "Shopify", description: "Gli ordini Shopify diventano ordini Inventoros e le giacenze di Inventoros vengono pubblicate su Shopify. I prodotti sono abbinati per SKU.", crumb: "Integrazioni" }, ao = { connected: "Collegato a {shop}", not_connected: "Non collegato", error: "Ultimo errore", acting_user: "Ordini e movimenti di stock sono registrati come {name}." }, ro = { title: "Connessione", subtitle: "Le credenziali dell'app Shopify, dal Dev Dashboard (App settings).", shop_domain: "Indirizzo del negozio", shop_domain_hint: "Per esempio mio-negozio.myshopify.com", client_id: "Client ID", client_secret: "Client secret", client_secret_saved: "Salvato. Lascia vuoto per mantenerlo.", api_version: "Versione API", scopes: "L'app richiede questi scope: {scopes}.", save: "Salva e prova la connessione", disconnect: "Scollega", disconnect_confirm: "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate." }, lo = { title: "Impostazioni di sincronizzazione", import_orders: "Importa gli ordini Shopify", import_orders_hint: "I nuovi ordini Shopify diventano ordini Inventoros e scalano lo stock; annullarli in Shopify li annulla anche qui.", push_inventory: "Pubblica le giacenze su Shopify", push_inventory_hint: "Ogni movimento di stock in Inventoros imposta la quantità disponibile su Shopify. Inventoros è la fonte di verità.", warehouse: "Magazzino predefinito per gli ordini Shopify", warehouse_default: "Magazzino predefinito", locations: "Sedi Shopify", locations_hint: "Scegli quale stock di Inventoros mostra ogni sede Shopify. Lascia una sede non sincronizzata per gestirne lo stock su Shopify. Con più sedi, assegna a ciascuna il proprio magazzino.", location_unsynced: "Non sincronizzata", location_all: "Tutti i magazzini (stock totale)", warehouse_hint: "Usato quando la sede Shopify dell'ordine non è collegata a un magazzino.", location_hint: "Salva prima la connessione per caricare le sedi del negozio." }, co = { title: "Webhook degli ordini", subtitle: "Shopify avvisa Inventoros dei nuovi ordini e di quelli annullati a questo indirizzo. Deve essere pubblico e HTTPS.", register: "Registra i webhook su Shopify", registered: "Registrati il {date}", not_registered: "Non ancora registrati", copy: "Copia", copied: "Copiato", checked: "Controllati il {date}" }, uo = { title: "Sincronizzazione giacenze", subtitle: "Abbina ogni variante Shopify a Inventoros tramite SKU e pubblica tutte le quantità. Eseguila una volta dopo il collegamento e ogni volta che cambi molti SKU.", run: "Sincronizza tutte le giacenze", never: "Mai eseguita", last_run: "Ultima esecuzione {date}", shopify_skus: "SKU su Shopify", inventoros_skus: "SKU su Inventoros", matched: "Abbinati", pushed: "Pubblicati", failed: "Falliti", untracked: "Non tracciati su Shopify", only_in_shopify: "Solo su Shopify", only_in_inventoros: "Solo su Inventoros", sample: "Primi {count}:" }, po = { title: "Ordini Shopify recenti", empty: "Nessun ordine Shopify ricevuto finora.", shopify_order: "Ordine Shopify", status: "Stato", result: "Esito", inventoros_order: "Ordine Inventoros", retry: "Riprova", statuses: { imported: "Importato", failed: "Fallito", skipped: "Saltato", cancelled: "Annullato" } }, ho = { title: "Recupero ordini", subtitle: "Ogni dieci minuti Inventoros rilegge gli ordini modificati su Shopify: gli ordini il cui webhook è andato perso vengono comunque importati, e modifiche, evasioni e rimborsi vengono applicati. I webhook mancanti vengono registrati di nuovo.", last_run: "Ultima esecuzione {date}", never: "Non ancora eseguito", checked: "Ordini controllati", imported: "Importati", updated: "Aggiornati", not_imported: "Non importati", ignored: "Precedenti alla finestra di importazione", webhooks_repaired: "Webhook registrati di nuovo: {topics}", from: "Importa gli ordini mancanti creati dal", from_hint: "Shopify rende disponibili alle app gli ordini degli ultimi 60 giorni.", run: "Recupera ordini" }, _o = { title: "Catalogo", subtitle: "Copia i prodotti tra Shopify e Inventoros, abbinati per SKU. I prodotti che esistono già dall'altra parte non vengono mai modificati.", import_title: "Importa da Shopify", import_hint: "Crea un prodotto Inventoros per ogni prodotto Shopify i cui SKU non esistono in Inventoros, con opzioni e varianti.", with_stock: "Importa anche lo stock disponibile su Shopify come giacenza iniziale", import: "Importa prodotti", publish_title: "Pubblica su Shopify", publish_hint: "Crea un prodotto Shopify per ogni prodotto Inventoros attivo i cui SKU non esistono su Shopify, con prezzi, barcode e stock nelle sedi collegate.", status_draft: "Come bozze", status_active: "Come prodotti attivi", publish: "Pubblica prodotti", last_run: "Ultima esecuzione {date}", products: "Prodotti", variants: "Varianti", existing: "Già in Inventoros", already: "Già su Shopify", partial: "In parte su Shopify", no_sku: "Senza SKU", failed: "Falliti" }, yo = {
+  nav: oo,
+  permissions: so,
+  card: no,
+  page: io,
+  status: ao,
+  connection: ro,
+  sync: lo,
+  webhooks: co,
+  stock: uo,
+  orders: po,
+  recovery: ho,
+  catalogue: _o
 };
-function gs(i) {
-  i.i18n?.addMessages("en", E), i.i18n?.addMessages("it", zt), i.registerPage("Settings", ct), i.registerComponent("ShopifySettingsCard", yt);
+function ai(i) {
+  i.i18n?.addMessages("en", j), i.i18n?.addMessages("it", yo), i.registerPage("Settings", Qt), i.registerComponent("ShopifySettingsCard", to);
 }
 export {
-  gs as default
+  ai as default
 };

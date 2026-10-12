@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $last_pushed_quantity
  * @property Carbon|null $last_pushed_at
  * @property string|null $last_error
+ * @property array<string, int>|null $last_pushed
  */
 class ShopifyInventoryItem extends Model
 {
@@ -33,6 +34,7 @@ class ShopifyInventoryItem extends Model
         'last_pushed_quantity',
         'last_pushed_at',
         'last_error',
+        'last_pushed',
     ];
 
     protected function casts(): array
@@ -41,6 +43,7 @@ class ShopifyInventoryItem extends Model
             'tracked' => 'boolean',
             'last_pushed_quantity' => 'integer',
             'last_pushed_at' => 'datetime',
+            'last_pushed' => 'array',
         ];
     }
 }

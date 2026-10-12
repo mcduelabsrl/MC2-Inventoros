@@ -37,6 +37,13 @@ use Illuminate\Support\Str;
  * @property Carbon|null $last_full_sync_at
  * @property array<string, mixed>|null $last_full_sync_summary
  * @property string|null $last_error
+ * @property array<int, array{location_id: string, warehouse_id: int|null}>|null $location_map
+ * @property Carbon|null $orders_since
+ * @property Carbon|null $orders_synced_at
+ * @property array<string, mixed>|null $orders_sync_summary
+ * @property Carbon|null $webhooks_checked_at
+ * @property array<string, mixed>|null $catalogue_import_summary
+ * @property array<string, mixed>|null $catalogue_publish_summary
  */
 class ShopifyConnection extends Model
 {
@@ -64,6 +71,13 @@ class ShopifyConnection extends Model
         'last_full_sync_at',
         'last_full_sync_summary',
         'last_error',
+        'location_map',
+        'orders_since',
+        'orders_synced_at',
+        'orders_sync_summary',
+        'webhooks_checked_at',
+        'catalogue_import_summary',
+        'catalogue_publish_summary',
     ];
 
     protected $hidden = ['client_secret', 'access_token', 'webhook_token'];
@@ -80,6 +94,13 @@ class ShopifyConnection extends Model
             'webhooks_registered_at' => 'datetime',
             'last_full_sync_at' => 'datetime',
             'last_full_sync_summary' => 'array',
+            'location_map' => 'array',
+            'orders_since' => 'datetime',
+            'orders_synced_at' => 'datetime',
+            'orders_sync_summary' => 'array',
+            'webhooks_checked_at' => 'datetime',
+            'catalogue_import_summary' => 'array',
+            'catalogue_publish_summary' => 'array',
         ];
     }
 
@@ -88,6 +109,14 @@ class ShopifyConnection extends Model
         static::creating(function (self $connection): void {
             $connection->webhook_token ??= Str::random(48);
             $connection->api_version ??= self::DEFAULT_API_VERSION;
+            $connection->orders_since ??= now();
+        });
+
+        // location_id mirrors the first mapped location, for older readers.
+        static::saving(function (self $connection): void {
+            if ($connection->isDirty('location_map')) {
+                $connection->location_id = $connection->locationMap()[0]['location_id'] ?? null;
+            }
         });
     }
 
@@ -106,7 +135,50 @@ class ShopifyConnection extends Model
 
     public function canPushInventory(): bool
     {
-        return $this->push_inventory && filled($this->location_id);
+        return $this->push_inventory && $this->locationMap() !== [];
+    }
+
+    /**
+     * The Shopify locations Inventoros controls, each fed by one Inventoros
+     * warehouse, or by the total stock of every warehouse (warehouse_id null,
+     * allowed only when a single location is mapped). The first entry is the
+     * primary location: variant stock, which has no per-warehouse breakdown,
+     * goes there.
+     *
+     * @return array<int, array{location_id: string, warehouse_id: int|null}>
+     */
+    public function locationMap(): array
+    {
+        $map = [];
+        foreach ((array) ($this->location_map ?? []) as $entry) {
+            if (is_array($entry) && filled($entry['location_id'] ?? null)) {
+                $map[] = [
+                    'location_id' => (string) $entry['location_id'],
+                    'warehouse_id' => isset($entry['warehouse_id']) && $entry['warehouse_id'] !== '' ? (int) $entry['warehouse_id'] : null,
+                ];
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * The Inventoros warehouse mapped to a Shopify location (gid or numeric id).
+     */
+    public function warehouseForLocation(string|int|null $locationId): ?int
+    {
+        if ($locationId === null || $locationId === '') {
+            return null;
+        }
+
+        $locationId = (string) $locationId;
+        foreach ($this->locationMap() as $entry) {
+            if ($entry['location_id'] === $locationId || str_ends_with($entry['location_id'], '/'.$locationId)) {
+                return $entry['warehouse_id'];
+            }
+        }
+
+        return null;
     }
 
     public function locationName(): ?string

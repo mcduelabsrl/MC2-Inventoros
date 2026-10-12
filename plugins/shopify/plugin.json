@@ -1,13 +1,15 @@
 {
     "name": "Shopify",
-    "description": "Connects one Shopify store per organization: Shopify orders are imported as Inventoros orders, and Inventoros stock is pushed to Shopify as the available quantity. Products are matched by SKU.",
-    "version": "1.0.0",
+    "description": "Connects one Shopify store per organization: Shopify orders are imported and kept in step (edits, fulfilments, refunds, cancellations, with a recovery backstop), Inventoros stock is pushed to each mapped Shopify location, and the catalogue can be copied both ways. Products are matched by SKU.",
+    "version": "1.1.0",
     "author": "MC2 Lab",
     "requires": "2.0.0",
     "requires_php": "8.4",
     "main_file": "Plugin.php",
     "ui": {
         "entry": "plugin.js",
-        "styles": ["plugin.css"]
+        "styles": [
+            "plugin.css"
+        ]
     }
 }

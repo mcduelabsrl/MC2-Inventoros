@@ -8,8 +8,11 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Inventoros\Plugins\Shopify\Jobs\CatalogueJob;
 use Inventoros\Plugins\Shopify\Jobs\FullInventorySync;
+use Inventoros\Plugins\Shopify\Jobs\RecoverOrders;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\OrderImporter;
@@ -43,6 +46,7 @@ class SettingsController
                 'api_version' => $connection->api_version,
                 'location_id' => $connection->location_id,
                 'location_name' => $connection->locationName(),
+                'location_map' => $connection->locationMap(),
                 'locations' => $connection->locations ?? [],
                 'warehouse_id' => $connection->warehouse_id,
                 'import_orders' => $connection->import_orders,
@@ -52,6 +56,12 @@ class SettingsController
                 'last_full_sync_at' => $connection->last_full_sync_at?->toIso8601String(),
                 'last_full_sync_summary' => $connection->last_full_sync_summary,
                 'last_error' => $connection->last_error,
+                'webhooks_checked_at' => $connection->webhooks_checked_at?->toIso8601String(),
+                'orders_since' => $connection->orders_since?->toIso8601String(),
+                'orders_synced_at' => $connection->orders_synced_at?->toIso8601String(),
+                'orders_sync_summary' => $connection->orders_sync_summary,
+                'catalogue_import_summary' => $connection->catalogue_import_summary,
+                'catalogue_publish_summary' => $connection->catalogue_publish_summary,
                 'acting_user' => $connection->user_id === null ? null : User::query()->whereKey($connection->user_id)->value('name'),
             ],
             'webhookUrl' => $connection === null ? null : self::webhookUrl($connection),
@@ -98,6 +108,9 @@ class SettingsController
             'client_secret' => [$connection === null ? 'required' : 'nullable', 'string', 'max:255'],
             'api_version' => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
             'location_id' => ['nullable', 'string', 'max:255'],
+            'location_map' => ['nullable', 'array', 'max:50'],
+            'location_map.*.location_id' => ['required', 'string', 'max:255'],
+            'location_map.*.warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('organization_id', $orgId)],
             'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('organization_id', $orgId)],
             'import_orders' => ['boolean'],
             'push_inventory' => ['boolean'],
@@ -141,17 +154,20 @@ class SettingsController
         }
 
         $locationIds = array_column($info['locations'], 'id');
-        $location = $validated['location_id'] ?? $connection->location_id;
-        if (! in_array($location, $locationIds, true)) {
-            $location = count($locationIds) === 1 ? $locationIds[0] : null;
+        $map = $this->locationMap($request, $validated, $connection, $locationIds);
+        if (is_string($map)) {
+            $connection->forceFill(['shop_name' => $info['name'], 'locations' => $info['locations'], 'last_error' => null])->save();
+
+            return back()->withErrors(['location_map' => $map])->with('error', $map);
         }
 
         $connection->forceFill([
             'shop_name' => $info['name'],
             'locations' => $info['locations'],
-            'location_id' => $location,
+            'location_map' => $map,
             'last_error' => null,
         ])->save();
+        $location = $map[0]['location_id'] ?? null;
 
         $message = "Connected to {$info['name']}.";
         if ($connection->push_inventory && $location === null) {
@@ -188,7 +204,7 @@ class SettingsController
         $connection = $this->connection($request);
 
         if (! $connection->canPushInventory()) {
-            return back()->with('error', 'Turn on stock sync and choose a Shopify location first.');
+            return back()->with('error', 'Turn on stock sync and map a Shopify location first.');
         }
 
         FullInventorySync::dispatch($connection->organization_id);
@@ -220,6 +236,85 @@ class SettingsController
         $connection->delete();
 
         return back()->with('success', 'Shopify disconnected. Remove the app from the store in Shopify too, so it stops sending webhooks.');
+    }
+
+    public function recover(Request $request): RedirectResponse
+    {
+        $connection = $this->connection($request);
+        $validated = $request->validate(['from' => ['required', 'date', 'before_or_equal:now', 'after:'.now()->subDays(60)->toDateString()]]);
+
+        RecoverOrders::dispatch($connection->organization_id, Carbon::parse($validated['from'])->startOfDay()->toIso8601String());
+
+        return back()->with('success', 'Order recovery started. Orders created since '.$validated['from'].' that are missing will be imported.');
+    }
+
+    public function importCatalogue(Request $request): RedirectResponse
+    {
+        $connection = $this->connection($request);
+        $validated = $request->validate(['with_stock' => ['boolean']]);
+
+        CatalogueJob::dispatch($connection->organization_id, CatalogueJob::IMPORT, (bool) ($validated['with_stock'] ?? true));
+
+        return back()->with('success', 'Catalogue import started. The summary appears here when it finishes.');
+    }
+
+    public function publishCatalogue(Request $request): RedirectResponse
+    {
+        $connection = $this->connection($request);
+        $validated = $request->validate(['status' => ['required', 'in:draft,active']]);
+
+        if ($connection->locationMap() === []) {
+            return back()->with('error', 'Map at least one Shopify location first, so new products get their stock.');
+        }
+
+        CatalogueJob::dispatch($connection->organization_id, CatalogueJob::PUBLISH, status: strtoupper($validated['status']));
+
+        return back()->with('success', 'Publishing started. The summary appears here when it finishes.');
+    }
+
+    /**
+     * The location map to store, or an error message.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<int, string>  $locationIds  the store's active locations
+     * @return array<int, array{location_id: string, warehouse_id: int|null}>|string
+     */
+    private function locationMap(Request $request, array $validated, ShopifyConnection $connection, array $locationIds): array|string
+    {
+        if ($request->has('location_map')) {
+            $entries = (array) ($validated['location_map'] ?? []);
+        } elseif (filled($validated['location_id'] ?? null)) {
+            $entries = [['location_id' => $validated['location_id'], 'warehouse_id' => null]];
+        } else {
+            $entries = $connection->locationMap();
+        }
+
+        $map = [];
+        foreach ($entries as $entry) {
+            if (in_array($entry['location_id'] ?? null, $locationIds, true)) {
+                $map[] = ['location_id' => (string) $entry['location_id'], 'warehouse_id' => isset($entry['warehouse_id']) ? (int) $entry['warehouse_id'] : null];
+            }
+        }
+
+        if ($map === [] && count($locationIds) === 1 && ! $request->has('location_map')) {
+            return [['location_id' => $locationIds[0], 'warehouse_id' => null]];
+        }
+
+        if (count($map) !== count(array_unique(array_column($map, 'location_id')))) {
+            return 'Each Shopify location can be mapped once.';
+        }
+
+        if (count($map) > 1) {
+            $warehouses = array_column($map, 'warehouse_id');
+            if (in_array(null, $warehouses, true)) {
+                return 'With more than one Shopify location, give each its own Inventoros warehouse; "all warehouses" would publish the same stock twice.';
+            }
+            if (count($warehouses) !== count(array_unique($warehouses))) {
+                return 'Two Shopify locations cannot share one warehouse: its stock would be published twice.';
+            }
+        }
+
+        return $map;
     }
 
     private function connection(Request $request): ShopifyConnection

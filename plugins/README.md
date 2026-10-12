@@ -2,7 +2,7 @@
 
 Each folder here is one plugin; the folder name is its slug. Plugins are managed from **Admin > Plugins**.
 
-- `shopify/` connects a Shopify store: Shopify orders become Inventoros orders and Inventoros stock is pushed to Shopify, matched by SKU. Setup steps are in [shopify/README.md](shopify/README.md).
+- `shopify/` connects a Shopify store: orders are imported and kept in step (edits, fulfilments, refunds, cancellations), stock is pushed to each mapped Shopify location, and the catalogue can be copied both ways, matched by SKU. Setup steps are in [shopify/README.md](shopify/README.md).
 - `hello-world/` is a working example: actions, filters, lifecycle files (`hooks/`) and a UI bundle built from `ui/` into `dist/`. Start by copying it.
 - The full guide, with every action and filter the application fires, is [docs/PLUGIN_DEVELOPMENT.md](../docs/PLUGIN_DEVELOPMENT.md).
 

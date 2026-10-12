@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Carbon;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\OrderImporter;
 
@@ -40,10 +41,21 @@ class ProcessWebhook implements ShouldQueue
             return;
         }
 
-        match ($this->topic) {
-            'orders/create' => $importer->import($connection, $this->payload),
-            'orders/cancelled' => $importer->cancel($connection, $this->payload),
-            default => null,
-        };
+        if ($this->topic === 'orders/cancelled') {
+            $importer->cancel($connection, $this->payload);
+
+            return;
+        }
+
+        // Every order topic carries the whole order: reconcile it. An update
+        // to an order placed before the store was connected only applies to
+        // an order already imported; it never imports that old order.
+        $createdAt = isset($this->payload['created_at']) ? Carbon::parse($this->payload['created_at']) : null;
+        $importNew = $this->topic === 'orders/create'
+            || $connection->orders_since === null
+            || $createdAt === null
+            || $createdAt->gte($connection->orders_since);
+
+        $importer->reconcile($connection, $this->payload, $importNew);
     }
 }

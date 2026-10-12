@@ -7,6 +7,7 @@ namespace Inventoros\Plugins\Shopify\Models;
 use App\Models\Order\Order;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * A Shopify order the plugin received and what became of it.
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $message
  * @property string $payload
  * @property int $attempts
+ * @property Carbon|null $shopify_updated_at
  */
 class ShopifyOrder extends Model
 {
@@ -42,7 +44,13 @@ class ShopifyOrder extends Model
         'message',
         'payload',
         'attempts',
+        'shopify_updated_at',
     ];
+
+    protected function casts(): array
+    {
+        return ['shopify_updated_at' => 'datetime'];
+    }
 
     protected $hidden = ['payload'];
 

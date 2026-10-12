@@ -19,7 +19,7 @@ use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
  */
 class WebhookController
 {
-    public const TOPICS = ['orders/create', 'orders/cancelled'];
+    public const TOPICS = ['orders/create', 'orders/updated', 'orders/cancelled'];
 
     public function __invoke(Request $request, string $token): Response
     {

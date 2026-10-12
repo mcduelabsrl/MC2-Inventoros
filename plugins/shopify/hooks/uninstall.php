@@ -8,6 +8,7 @@
 
 use Illuminate\Support\Facades\Schema;
 
+Schema::dropIfExists('shopify_links');
 Schema::dropIfExists('shopify_inventory_items');
 Schema::dropIfExists('shopify_orders');
 Schema::dropIfExists('shopify_connections');

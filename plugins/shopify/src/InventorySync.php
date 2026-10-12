@@ -13,7 +13,7 @@ use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 
 /**
  * Pushes Inventoros on-hand stock to Shopify as the "available" quantity at
- * the connection's location.
+ * each mapped location (see StockLevels for what each location gets).
  *
  * Inventoros takes stock out when an order is created, before it ships, so
  * its on-hand figure is what Shopify calls available (Shopify's own unshipped
@@ -29,7 +29,12 @@ class InventorySync
 {
     private const SAMPLE_SIZE = 50;
 
-    public function __construct(private readonly ShopifyConnection $connection, private readonly ShopifyClient $client) {}
+    private readonly StockLevels $levels;
+
+    public function __construct(private readonly ShopifyConnection $connection, private readonly ShopifyClient $client)
+    {
+        $this->levels = new StockLevels($connection);
+    }
 
     public static function for(ShopifyConnection $connection): self
     {
@@ -37,7 +42,7 @@ class InventorySync
     }
 
     /**
-     * Push one product (or one of its variants).
+     * Push one product (or one of its variants) to every mapped location.
      *
      * @return string pushed, unmatched, skipped or failed
      *
@@ -59,10 +64,16 @@ class InventorySync
             return 'unmatched';
         }
 
-        $quantity = max(0, (int) ($variant?->stock ?? $product->stock));
-        $errors = $this->pushBatch([['item' => $item, 'quantity' => $quantity]]);
+        $entries = [];
+        foreach ($this->levels->for($product, $variant) as $locationId => $quantity) {
+            $entries[] = ['item' => $item, 'location_id' => $locationId, 'quantity' => $quantity];
+        }
 
-        return $errors === 0 ? 'pushed' : 'failed';
+        if ($entries === []) {
+            return 'skipped';
+        }
+
+        return $this->pushBatch($entries) === 0 ? 'pushed' : 'failed';
     }
 
     /**
@@ -82,51 +93,45 @@ class InventorySync
         }
 
         // 2. Refresh the cache: upsert what exists, forget what no longer does.
-        $now = now()->startOfSecond();
-        foreach (array_chunk($shopify, 500, true) as $chunk) {
-            ShopifyInventoryItem::query()->upsert(array_map(fn (array $v) => [
-                'organization_id' => $orgId,
-                'sku' => $v['sku'],
-                'inventory_item_id' => $v['inventory_item_id'],
-                'variant_id' => $v['variant_id'],
-                'tracked' => $v['tracked'],
-                'created_at' => $now,
-                'updated_at' => $now,
-            ], array_values($chunk)), ['organization_id', 'sku'], ['inventory_item_id', 'variant_id', 'tracked', 'updated_at']);
-        }
-        ShopifyInventoryItem::query()
-            ->where('organization_id', $orgId)
-            ->where('updated_at', '<', $now)
-            ->delete();
+        $this->cache($shopify);
 
-        // 3. Inventoros quantities by SKU.
-        $local = $this->localQuantities();
+        // 3. What Inventoros has, per SKU and location.
+        $local = $this->localLevels();
 
         $items = ShopifyInventoryItem::query()
             ->where('organization_id', $orgId)
             ->get()
             ->keyBy('sku');
 
-        $batch = [];
+        $entries = [];
+        $matched = 0;
         $untracked = [];
-        foreach ($local as $sku => $quantity) {
+        foreach ($local as $sku => $levels) {
             $item = $items->get($sku);
             if ($item === null) {
                 continue;
             }
+            $matched++;
             if (! $item->tracked) {
                 $untracked[] = $sku;
                 $item->forceFill(['last_error' => 'Shopify does not track inventory for this variant.'])->save();
 
                 continue;
             }
-            $batch[] = ['item' => $item, 'quantity' => max(0, $quantity)];
+            foreach ($levels as $locationId => $quantity) {
+                $entries[] = ['item' => $item, 'location_id' => $locationId, 'quantity' => $quantity];
+            }
         }
 
-        $failed = 0;
-        foreach (array_chunk($batch, ShopifyClient::MAX_QUANTITIES_PER_CALL) as $chunk) {
-            $failed += $this->pushBatch($chunk);
+        foreach (array_chunk($entries, ShopifyClient::MAX_QUANTITIES_PER_CALL) as $chunk) {
+            $this->pushBatch($chunk);
         }
+
+        $failedSkus = ShopifyInventoryItem::query()
+            ->where('organization_id', $orgId)
+            ->whereNotNull('last_error')
+            ->where('tracked', true)
+            ->get(['sku', 'last_error']);
 
         $onlyShopify = array_values(array_diff(array_keys($shopify), array_keys($local)));
         $onlyInventoros = array_values(array_diff(array_keys($local), array_keys($shopify)));
@@ -134,22 +139,18 @@ class InventorySync
         $summary = [
             'shopify_skus' => count($shopify),
             'inventoros_skus' => count($local),
-            'matched' => count($batch) + count($untracked),
-            'pushed' => count($batch) - $failed,
-            'failed' => $failed,
+            'matched' => $matched,
+            'pushed' => $matched - count($untracked) - $failedSkus->count(),
+            'failed' => $failedSkus->count(),
             'untracked' => count($untracked),
             'untracked_sample' => array_slice($untracked, 0, self::SAMPLE_SIZE),
             'only_in_shopify' => count($onlyShopify),
             'only_in_shopify_sample' => array_slice($onlyShopify, 0, self::SAMPLE_SIZE),
             'only_in_inventoros' => count($onlyInventoros),
             'only_in_inventoros_sample' => array_slice($onlyInventoros, 0, self::SAMPLE_SIZE),
-            'failed_sample' => ShopifyInventoryItem::query()
-                ->where('organization_id', $orgId)
-                ->whereNotNull('last_error')
-                ->where('tracked', true)
-                ->limit(self::SAMPLE_SIZE)
-                ->get(['sku', 'last_error'])
+            'failed_sample' => $failedSkus->take(self::SAMPLE_SIZE)
                 ->map(fn ($i) => ['sku' => $i->sku, 'error' => $i->last_error])
+                ->values()
                 ->all(),
         ];
 
@@ -163,29 +164,59 @@ class InventorySync
     }
 
     /**
-     * Set the quantities of a batch of cached items. Entries Shopify rejects
-     * are recorded on their item; when an item is not stocked at the location
+     * Upsert Shopify variants into the SKU cache and, by default, forget the
+     * SKUs that are no longer in Shopify.
+     *
+     * @param  array<string, array{sku: string, variant_id: string, inventory_item_id: string, tracked: bool}>  $variants
+     */
+    public function cache(array $variants, bool $forgetOthers = true): void
+    {
+        $orgId = $this->connection->organization_id;
+        $now = now()->startOfSecond();
+
+        foreach (array_chunk($variants, 500, true) as $chunk) {
+            ShopifyInventoryItem::query()->upsert(array_map(fn (array $v) => [
+                'organization_id' => $orgId,
+                'sku' => $v['sku'],
+                'inventory_item_id' => $v['inventory_item_id'],
+                'variant_id' => $v['variant_id'],
+                'tracked' => $v['tracked'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ], array_values($chunk)), ['organization_id', 'sku'], ['inventory_item_id', 'variant_id', 'tracked', 'updated_at']);
+        }
+
+        if ($forgetOthers) {
+            ShopifyInventoryItem::query()
+                ->where('organization_id', $orgId)
+                ->where('updated_at', '<', $now)
+                ->delete();
+        }
+    }
+
+    /**
+     * Set the quantities of a batch of entries. Entries Shopify rejects are
+     * recorded on their item; when an item is not yet stocked at a location
      * it is activated there and the batch is retried once.
      *
-     * @param  array<int, array{item: ShopifyInventoryItem, quantity: int}>  $batch
+     * @param  array<int, array{item: ShopifyInventoryItem, location_id: string, quantity: int}>  $batch
      * @return int how many entries failed
      */
     private function pushBatch(array $batch, bool $retried = false): int
     {
+        $batch = array_values($batch);
         if ($batch === []) {
             return 0;
         }
 
         $errors = $this->client->setAvailable(array_map(fn (array $e) => [
             'inventory_item_id' => $e['item']->inventory_item_id,
+            'location_id' => $e['location_id'],
             'quantity' => $e['quantity'],
         ], $batch));
 
         if ($errors === []) {
-            $now = now();
-            foreach ($batch as $entry) {
-                $entry['item']->forceFill(['last_pushed_quantity' => $entry['quantity'], 'last_pushed_at' => $now, 'last_error' => null])->save();
-            }
+            $this->recordPushed($batch);
 
             return 0;
         }
@@ -203,7 +234,7 @@ class InventorySync
             $entry = $batch[$error['index']];
 
             if ($error['code'] === 'ITEM_NOT_STOCKED_AT_LOCATION' && ! $retried) {
-                $activation = $this->client->activateAtLocation($entry['item']->inventory_item_id);
+                $activation = $this->client->activateAtLocation($entry['item']->inventory_item_id, $entry['location_id']);
                 if ($activation === []) {
                     $retry[] = $entry;
 
@@ -236,6 +267,29 @@ class InventorySync
     }
 
     /**
+     * @param  array<int, array{item: ShopifyInventoryItem, location_id: string, quantity: int}>  $batch
+     */
+    private function recordPushed(array $batch): void
+    {
+        $now = now();
+        $byItem = [];
+        foreach ($batch as $entry) {
+            $byItem[$entry['item']->id]['item'] = $entry['item'];
+            $byItem[$entry['item']->id]['levels'][$entry['location_id']] = $entry['quantity'];
+        }
+
+        foreach ($byItem as ['item' => $item, 'levels' => $levels]) {
+            $pushed = array_merge((array) ($item->last_pushed ?? []), $levels);
+            $item->forceFill([
+                'last_pushed' => $pushed,
+                'last_pushed_quantity' => array_sum($pushed),
+                'last_pushed_at' => $now,
+                'last_error' => null,
+            ])->save();
+        }
+    }
+
+    /**
      * The cached Shopify item for a SKU, looking it up on a cache miss.
      */
     private function item(string $sku): ?ShopifyInventoryItem
@@ -261,25 +315,25 @@ class InventorySync
     }
 
     /**
-     * On-hand stock of every SKU the organization sells: variant SKUs, and
-     * the SKUs of products sold without variants.
+     * Per-location levels of every SKU the organization sells: variant SKUs,
+     * and the SKUs of products sold without variants.
      *
-     * @return array<string, int>
+     * @return array<string, array<string, int>> sku => [location id => quantity]
      */
-    private function localQuantities(): array
+    private function localLevels(): array
     {
         $orgId = $this->connection->organization_id;
-        $quantities = [];
+        $levels = [];
 
         ProductVariant::withoutGlobalScope(OrganizationScope::class)
             ->where('organization_id', $orgId)
             ->whereNotNull('sku')
-            ->select(['id', 'sku', 'stock'])
-            ->chunkById(1000, function (Collection $variants) use (&$quantities) {
+            ->with(['product' => fn ($q) => $q->withoutGlobalScope(OrganizationScope::class)])
+            ->chunkById(500, function (Collection $variants) use (&$levels) {
                 foreach ($variants as $variant) {
                     $sku = trim((string) $variant->sku);
-                    if ($sku !== '') {
-                        $quantities[$sku] ??= (int) $variant->stock;
+                    if ($sku !== '' && $variant->product !== null && ! isset($levels[$sku])) {
+                        $levels[$sku] = $this->levels->for($variant->product, $variant);
                     }
                 }
             });
@@ -288,16 +342,15 @@ class InventorySync
             ->where('organization_id', $orgId)
             ->where('has_variants', false)
             ->whereNotNull('sku')
-            ->select(['id', 'sku', 'stock'])
-            ->chunkById(1000, function (Collection $products) use (&$quantities) {
+            ->chunkById(500, function (Collection $products) use (&$levels) {
                 foreach ($products as $product) {
                     $sku = trim((string) $product->sku);
-                    if ($sku !== '') {
-                        $quantities[$sku] ??= (int) $product->stock;
+                    if ($sku !== '' && ! isset($levels[$sku])) {
+                        $levels[$sku] = $this->levels->for($product);
                     }
                 }
             });
 
-        return $quantities;
+        return $levels;
     }
 }
