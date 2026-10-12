@@ -44,6 +44,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $webhooks_checked_at
  * @property array<string, mixed>|null $catalogue_import_summary
  * @property array<string, mixed>|null $catalogue_publish_summary
+ * @property array<int, string>|null $missing_scopes
  */
 class ShopifyConnection extends Model
 {
@@ -78,6 +79,7 @@ class ShopifyConnection extends Model
         'webhooks_checked_at',
         'catalogue_import_summary',
         'catalogue_publish_summary',
+        'missing_scopes',
     ];
 
     protected $hidden = ['client_secret', 'access_token', 'webhook_token'];
@@ -101,6 +103,7 @@ class ShopifyConnection extends Model
             'webhooks_checked_at' => 'datetime',
             'catalogue_import_summary' => 'array',
             'catalogue_publish_summary' => 'array',
+            'missing_scopes' => 'array',
         ];
     }
 

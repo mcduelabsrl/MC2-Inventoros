@@ -15,6 +15,7 @@ use Inventoros\Plugins\Shopify\Http\SettingsController;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
+use Inventoros\Plugins\Shopify\ShopifyClient;
 use Tests\Feature\Api\Concerns\BuildsApiFixtures;
 use Tests\Feature\Plugins\Concerns\InteractsWithShopify;
 use Tests\TestCase;
@@ -383,6 +384,62 @@ final class ShopifyPluginTest extends TestCase
         $this->assertStringNotContainsString(self::SECRET, $encoded);
         $this->assertStringNotContainsString('shpat_token', $encoded);
         $this->assertTrue($props['connection']['has_client_secret']);
+    }
+
+    public function test_saving_settings_names_the_scopes_the_app_was_not_granted(): void
+    {
+        $this->connect();
+        $this->fakeShopify(scopes: ['read_orders', 'write_products', 'read_inventory']);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.save'), [
+            'shop_domain' => 'test-store.myshopify.com',
+            'client_id' => 'client-id',
+        ])->assertSessionHas('error');
+
+        $error = ShopifyConnection::forOrganization($this->org->id)->last_error;
+        // write_products implies read_products; write_inventory and read_locations are missing.
+        $this->assertStringContainsString('missing these access scopes: write_inventory, read_locations.', $error);
+        $this->assertSame([], $this->callsTo('locations'), 'no field is queried before the scopes are known');
+    }
+
+    public function test_missing_optional_scopes_are_kept_for_the_settings_page(): void
+    {
+        $this->connect();
+        $this->fakeShopify(locations: [['id' => self::LOCATION, 'name' => 'Main', 'isActive' => true]], scopes: ShopifyClient::REQUIRED_SCOPES);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.save'), [
+            'shop_domain' => 'test-store.myshopify.com',
+            'client_id' => 'client-id',
+        ])->assertSessionHas('success');
+
+        $this->assertSame(ShopifyClient::OPTIONAL_SCOPES, ShopifyConnection::forOrganization($this->org->id)->missing_scopes);
+    }
+
+    public function test_saving_settings_always_gets_a_fresh_token(): void
+    {
+        // A token cached before the app was granted more scopes keeps the
+        // old scopes for up to 24 hours.
+        $this->connect(['access_token' => 'shpat_old', 'token_expires_at' => now()->addHours(20)]);
+        $this->fakeShopify(locations: [['id' => self::LOCATION, 'name' => 'Main', 'isActive' => true]]);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.save'), [
+            'shop_domain' => 'test-store.myshopify.com',
+            'client_id' => 'client-id',
+        ])->assertSessionHas('success');
+
+        Http::assertSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/admin/oauth/access_token'));
+        Http::assertNotSent(fn (HttpRequest $r) => $r->hasHeader('X-Shopify-Access-Token', 'shpat_old'));
+    }
+
+    public function test_an_access_denied_answer_gets_a_new_token_and_retries(): void
+    {
+        $connection = $this->connect(['access_token' => 'shpat_old', 'token_expires_at' => now()->addHours(20)]);
+        $this->fakeShopify(denyOnce: true);
+
+        $info = (new ShopifyClient($connection))->graphql('query ShopInfo { shop { name } }');
+
+        $this->assertSame('Test Store', $info['shop']['name']);
+        $this->assertSame('shpat_token', $connection->fresh()->access_token);
     }
 
     public function test_settings_refuse_an_address_that_is_not_a_shopify_store(): void

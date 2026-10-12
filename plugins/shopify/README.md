@@ -26,8 +26,18 @@ Products are matched by **SKU**: a Shopify variant's SKU must equal an Inventoro
 Shopify no longer lets you create custom apps in the store admin. Create one in the Dev Dashboard instead:
 
 1. Open the [Shopify Dev Dashboard](https://dev.shopify.com/dashboard) with the account that owns the store, then choose **Create app** and **Start from Dev Dashboard**. Name it, for example, "Inventoros".
-2. Under **Versions**, create a version with these **access scopes** and release it:
-   `read_orders`, `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`, `read_markets_home`, `read_assigned_fulfillment_orders`, `read_merchant_managed_fulfillment_orders`
+2. Under **Versions**, create a version and paste this list into its **Scopes** field, exactly as written (comma-separated, no spaces):
+
+   ```text
+   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders
+   ```
+
+   - **Required:** the first five, for orders, stock and locations.
+   - **Optional**, one feature each:
+     - `write_products` publishes Inventoros products to Shopify;
+     - the two `fulfillment_orders` scopes let an order ship from the warehouse of its assigned location, when several locations are mapped.
+
+   Then **release** the version. The Dev Dashboard's scope picker shows friendlier names, so typing the list is the reliable way. If Shopify asks to approve new scopes in the store admin, approve them.
 3. Under **API access**, allow **protected customer data** with the name, email and address fields. Without them, Shopify blanks the customer's details and orders arrive as "Shopify customer".
 4. **Install** the app on your store. The plugin authenticates with Shopify's client credentials grant, which only works for stores in the same Shopify organization as the app.
 5. Under **Settings**, copy the **Client ID** and **Client secret**.
@@ -49,6 +59,8 @@ Shopify no longer lets you create custom apps in the store admin. Create one in 
    - If Inventoros is empty, choose **Import products** under **Catalogue**, with "also import Shopify's available stock".
    - If Shopify is empty, choose **Publish products** (as drafts, so you can review them).
    - If both already have products with the same SKUs, choose **Sync all stock now**. The summary lists SKUs that exist on only one side.
+
+**"Access denied" or "missing these access scopes".** The page names the scopes the store has not granted. Add them to the app's version, release it, approve them in the store if asked, then choose **Save and test connection** again. Saving always fetches a fresh token: a token issued before the change keeps the old scopes for up to 24 hours.
 
 Only users with the **Manage Shopify** permission (`shopify.manage`, which administrators hold) can see the page. Orders, shipments, returns and stock movements are recorded as the user who last saved the settings. That user must stay a member of the organization and keep the right to create orders.
 

@@ -22,15 +22,20 @@ use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
  */
 class ShopifyClient
 {
-    /** Scopes the Dev Dashboard app must be granted. */
+    /** Scopes the Dev Dashboard app must be granted: orders, stock and locations. */
     public const REQUIRED_SCOPES = [
         'read_orders',
         'read_products',
-        'write_products',
         'read_inventory',
         'write_inventory',
         'read_locations',
-        'read_markets_home',
+    ];
+
+    /** Scopes that unlock one feature each; without them the rest works. */
+    public const OPTIONAL_SCOPES = [
+        // Publish Inventoros products to Shopify.
+        'write_products',
+        // With several locations: ship each order from its assigned location's warehouse.
         'read_assigned_fulfillment_orders',
         'read_merchant_managed_fulfillment_orders',
     ];
@@ -63,6 +68,17 @@ class ShopifyClient
      */
     public function shopInfo(): array
     {
+        // Read what the store actually granted first (this needs no scope),
+        // so a missing scope is named instead of failing on some field.
+        $granted = $this->grantedScopes();
+        $missing = array_values(array_diff(self::REQUIRED_SCOPES, self::implied($granted)));
+        if ($missing !== []) {
+            throw new ShopifyException(
+                'The Shopify app is missing these access scopes: '.implode(', ', $missing).'. '
+                .'Add them to the app\'s version in the Shopify Dev Dashboard, release the version, approve the new scopes in the store if Shopify asks, then save again.'
+            );
+        }
+
         $data = $this->graphql('query ShopInfo { shop { name myshopifyDomain } locations(first: 100) { nodes { id name isActive } } }');
 
         $locations = [];
@@ -72,7 +88,43 @@ class ShopifyClient
             }
         }
 
-        return ['name' => (string) ($data['shop']['name'] ?? $this->connection->shop_domain), 'locations' => $locations];
+        return [
+            'name' => (string) ($data['shop']['name'] ?? $this->connection->shop_domain),
+            'locations' => $locations,
+            'missing_optional_scopes' => array_values(array_diff(self::OPTIONAL_SCOPES, self::implied($granted))),
+        ];
+    }
+
+    /**
+     * The access scopes the store granted the app.
+     *
+     * @return array<int, string>
+     */
+    public function grantedScopes(): array
+    {
+        $data = $this->graphql('query GrantedScopes { currentAppInstallation { accessScopes { handle } } }');
+
+        return array_values(array_filter(array_map(
+            fn ($scope) => is_array($scope) ? (string) ($scope['handle'] ?? '') : '',
+            (array) ($data['currentAppInstallation']['accessScopes'] ?? []),
+        )));
+    }
+
+    /**
+     * Granted scopes plus the ones they imply: write_x includes read_x.
+     *
+     * @param  array<int, string>  $granted
+     * @return array<int, string>
+     */
+    private static function implied(array $granted): array
+    {
+        foreach ($granted as $scope) {
+            if (str_starts_with($scope, 'write_')) {
+                $granted[] = 'read_'.substr($scope, 6);
+            }
+        }
+
+        return array_values(array_unique($granted));
     }
 
     /**
@@ -404,8 +456,11 @@ class ShopifyClient
     {
         $response = $this->post($query, $variables);
 
-        if ($response->status() === 401) {
-            // A token revoked or rotated early: get a new one, once.
+        // A token revoked or rotated early (401), or one issued before the
+        // app was granted more scopes (ACCESS_DENIED: tokens live 24 hours
+        // and carry the scopes of the moment they were issued): get a new
+        // one, once.
+        if ($response->status() === 401 || self::accessDenied($response)) {
             $this->forgetToken();
             $response = $this->post($query, $variables);
         }
@@ -425,10 +480,39 @@ class ShopifyClient
             $messages = is_array($errors) ? array_map(fn ($e) => is_array($e) ? ($e['message'] ?? json_encode($e)) : (string) $e, $errors) : [(string) $errors];
             $throttled = collect(is_array($errors) ? $errors : [])->contains(fn ($e) => is_array($e) && ($e['extensions']['code'] ?? null) === 'THROTTLED');
 
-            throw new ShopifyException('Shopify API error: '.implode('; ', $messages), transient: $throttled);
+            $hint = self::accessDenied($response)
+                ? ' The Shopify app lacks an access scope this needs: check the scopes of its version in the Dev Dashboard (see the plugin README), release it and approve it in the store.'
+                : '';
+
+            throw new ShopifyException('Shopify API error: '.implode('; ', $messages).$hint, transient: $throttled);
         }
 
         return is_array($json['data'] ?? null) ? $json['data'] : [];
+    }
+
+    private static function accessDenied(Response $response): bool
+    {
+        $errors = $response->json('errors');
+        if (! is_array($errors)) {
+            return false;
+        }
+
+        foreach ($errors as $error) {
+            if (is_array($error) && (($error['extensions']['code'] ?? null) === 'ACCESS_DENIED' || str_starts_with((string) ($error['message'] ?? ''), 'Access denied'))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Drop the cached access token, so the next call gets a new one with
+     * the scopes the app has now.
+     */
+    public function refreshToken(): void
+    {
+        $this->forgetToken();
     }
 
     /**

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\ShopifyClient;
 
 /**
  * Activates the bundled Shopify plugin and fakes Shopify (token endpoint and
@@ -177,9 +178,11 @@ trait InteractsWithShopify
      * @param  array<int, array<string, mixed>>  $products  GraphQL product nodes
      * @param  array<int, array{topic: string, uri: string}>  $webhooks  existing subscriptions
      */
-    protected function fakeShopify(array $variants = [], array $locations = [], bool $notStockedOnce = false, array $orders = [], array $assigned = [], array $products = [], array $webhooks = []): void
+    protected function fakeShopify(array $variants = [], array $locations = [], bool $notStockedOnce = false, array $orders = [], array $assigned = [], array $products = [], array $webhooks = [], ?array $scopes = null, bool $denyOnce = false): void
     {
         $this->shopify = [
+            'scopes' => $scopes ?? [...ShopifyClient::REQUIRED_SCOPES, ...ShopifyClient::OPTIONAL_SCOPES],
+            'deny_once' => $denyOnce,
             'nodes' => array_map(fn ($v) => [
                 'id' => 'gid://shopify/ProductVariant/'.md5($v['sku']),
                 'sku' => $v['sku'],
@@ -209,6 +212,12 @@ trait InteractsWithShopify
             $variables = $request['variables'] ?? [];
             $this->graphqlCalls[] = ['query' => $query, 'variables' => $variables];
 
+            if ($this->shopify['deny_once'] && ! str_contains($query, 'GrantedScopes')) {
+                $this->shopify['deny_once'] = false;
+
+                return Http::response(['errors' => [['message' => 'Access denied for locations field.', 'extensions' => ['code' => 'ACCESS_DENIED']]]]);
+            }
+
             $failSet = str_contains($query, 'inventorySetQuantities') && $this->shopify['fail_next_set'];
             if ($failSet) {
                 $this->shopify['fail_next_set'] = false;
@@ -217,6 +226,7 @@ trait InteractsWithShopify
             $page = fn (array $nodes) => ['nodes' => $nodes, 'pageInfo' => ['hasNextPage' => false, 'endCursor' => null]];
 
             return Http::response(['data' => match (true) {
+                str_contains($query, 'GrantedScopes') => ['currentAppInstallation' => ['accessScopes' => array_map(fn ($h) => ['handle' => $h], $this->shopify['scopes'])]],
                 str_contains($query, 'ShopInfo') => ['shop' => ['name' => 'Test Store', 'myshopifyDomain' => 'test-store.myshopify.com'], 'locations' => ['nodes' => $this->shopify['locations']]],
                 str_contains($query, 'VariantsBySku'), str_contains($query, 'AllVariants') => ['productVariants' => $page($this->shopify['nodes'])],
                 $failSet => ['inventorySetQuantities' => ['inventoryAdjustmentGroup' => null, 'userErrors' => [['field' => ['input', 'quantities', '0', 'locationId'], 'message' => 'Not stocked', 'code' => 'ITEM_NOT_STOCKED_AT_LOCATION']]]],

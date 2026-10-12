@@ -41,7 +41,8 @@ return function (string $slug, array $manifest): void {
     $schemaKey = 'shopify-plugin-schema-'.($manifest['version'] ?? '0');
     if (Cache::get($schemaKey) !== true) {
         try {
-            if (Schema::hasTable('shopify_connections') && ! Schema::hasTable('shopify_links')) {
+            // activate.php is idempotent: it only adds what is missing.
+            if (Schema::hasTable('shopify_connections')) {
                 require __DIR__.'/hooks/activate.php';
             }
             Cache::forever($schemaKey, true);

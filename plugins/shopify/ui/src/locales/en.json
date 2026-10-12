@@ -21,7 +21,8 @@
         "connected": "Connected to {shop}",
         "not_connected": "Not connected",
         "error": "Last error",
-        "acting_user": "Orders and stock changes are recorded as {name}."
+        "acting_user": "Orders and stock changes are recorded as {name}.",
+        "missing_scopes": "The Shopify app was not granted {scopes}: publishing products to Shopify, or choosing the warehouse of each order with several locations, will not work until you add them to the app's version and release it."
     },
     "connection": {
         "title": "Connection",
@@ -32,10 +33,11 @@
         "client_secret": "Client secret",
         "client_secret_saved": "Saved. Leave empty to keep it.",
         "api_version": "API version",
-        "scopes": "The app needs these scopes: {scopes}.",
+        "scopes": "Paste these access scopes into the Scopes field of the app's version in the Shopify Dev Dashboard, then release the version:",
         "save": "Save and test connection",
         "disconnect": "Disconnect",
-        "disconnect_confirm": "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted."
+        "disconnect_confirm": "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted.",
+        "scopes_optional": "Optional, for one feature each: {scopes}. The rest works without them."
     },
     "sync": {
         "title": "Sync settings",

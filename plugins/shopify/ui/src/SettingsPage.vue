@@ -16,6 +16,7 @@ const props = defineProps({
     webhookUrl: { type: String, default: null },
     defaultApiVersion: { type: String, required: true },
     requiredScopes: { type: Array, default: () => [] },
+    optionalScopes: { type: Array, default: () => [] },
     warehouses: { type: Array, default: () => [] },
     orders: { type: Array, default: () => [] },
 });
@@ -128,6 +129,9 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
             <div v-if="connection?.last_error" class="shp-alert" role="alert">
                 <strong>{{ t('status.error') }}:</strong> {{ connection.last_error }}
             </div>
+            <div v-if="connection?.missing_scopes?.length" class="shp-alert shp-alert-warning" role="status">
+                {{ t('status.missing_scopes', { scopes: connection.missing_scopes.join(', ') }) }}
+            </div>
 
             <form class="shp-grid" @submit.prevent="save">
                 <!-- Connection -->
@@ -167,7 +171,11 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                             <span v-if="form.errors.api_version" class="shp-error">{{ form.errors.api_version }}</span>
                         </label>
 
-                        <p class="shp-hint">{{ t('connection.scopes', { scopes: requiredScopes.join(', ') }) }}</p>
+                        <div class="shp-field">
+                            <span class="shp-hint">{{ t('connection.scopes') }}</span>
+                            <code class="shp-scopes">{{ [...requiredScopes, ...optionalScopes].join(',') }}</code>
+                            <span class="shp-hint">{{ t('connection.scopes_optional', { scopes: optionalScopes.join(', ') }) }}</span>
+                        </div>
                     </div>
                 </Card>
 
@@ -452,6 +460,22 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
     color: hsl(var(--text-primary));
     font-size: 0.875rem;
     overflow-wrap: anywhere;
+}
+
+.shp-alert-warning {
+    border-color: hsl(var(--status-warning) / 0.4);
+    background: hsl(var(--status-warning) / 0.08);
+}
+
+.shp-scopes {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: hsl(var(--surface-sunken));
+    color: hsl(var(--text-primary));
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+    user-select: all;
 }
 
 .shp-grid {

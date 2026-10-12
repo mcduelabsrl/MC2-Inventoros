@@ -14,6 +14,7 @@ Full release notes, with the pull request behind each change, are on [GitHub Rel
 
 ### Fixed
 
+- Shopify plugin: a store that had not granted every access scope failed with "Access denied for locations field", and kept failing for up to 24 hours after the scope was added, because the cached token carried the old scopes. Saving the settings now fetches a fresh token and names the missing scopes; an access-denied answer gets a new token and is retried once. `read_markets_home`, which Shopify does not document, is no longer listed, and only five scopes are required.
 - Docker (development stack): `docker compose up` now includes PostgreSQL and passes its settings to the app, worker and scheduler, so the installer's database step is already filled in. Before, the stack defaulted to SQLite, which the installer does not offer, and the installer asked for a MySQL/MariaDB server. The three containers now also share one `APP_KEY`, kept in the storage volume: before, each generated its own, so queued jobs could not decrypt stored secrets and every rebuild changed the key.
 - Docker: behind a reverse proxy the page loaded its scripts over http and the browser blocked them, leaving a blank page (#261).
 - Docker: the development stack's worker and scheduler were always reported unhealthy, and the production image's health check failed whenever `SERVER_NAME` was changed (#261).
