@@ -26,8 +26,19 @@ Products are matched by **SKU**: a Shopify variant's SKU must equal an Inventoro
 Shopify no longer lets you create custom apps in the store admin. Create one in the Dev Dashboard instead:
 
 1. Open the [Shopify Dev Dashboard](https://dev.shopify.com/dashboard) with the account that owns the store, then choose **Create app** and **Start from Dev Dashboard**. Name it, for example, "Inventoros".
-2. Under **Versions**, create a version with these **access scopes** and release it:
-   `read_orders`, `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`, `read_markets_home`, `read_assigned_fulfillment_orders`, `read_merchant_managed_fulfillment_orders`
+2. Under **Versions**, create a version and paste this list into its **Scopes** field, exactly as written (comma-separated, no spaces):
+
+   ```text
+   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders
+   ```
+
+   - **Required:** the first five, for orders, stock and locations.
+   - **Optional**, one feature each:
+     - `write_products` publishes Inventoros products to Shopify;
+     - `read_markets_home` imports the catalogue (Shopify needs it to read variant prices);
+     - the two `fulfillment_orders` scopes let an order ship from the warehouse of its assigned location, when several locations are mapped.
+
+   Then **release** the version. The Dev Dashboard's scope picker shows friendlier names, so typing the list is the reliable way. If Shopify asks to approve new scopes in the store admin, approve them.
 3. Under **API access**, allow **protected customer data** with the name, email and address fields. Without them, Shopify blanks the customer's details and orders arrive as "Shopify customer".
 4. **Install** the app on your store. The plugin authenticates with Shopify's client credentials grant, which only works for stores in the same Shopify organization as the app.
 5. Under **Settings**, copy the **Client ID** and **Client secret**.
@@ -49,6 +60,8 @@ Shopify no longer lets you create custom apps in the store admin. Create one in 
    - If Inventoros is empty, choose **Import products** under **Catalogue**, with "also import Shopify's available stock".
    - If Shopify is empty, choose **Publish products** (as drafts, so you can review them).
    - If both already have products with the same SKUs, choose **Sync all stock now**. The summary lists SKUs that exist on only one side.
+
+**"Access denied" or "missing these access scopes".** The page names the scopes the store has not granted. Add them to the app's version, release it, approve them in the store if asked, then choose **Save and test connection** again. Saving always fetches a fresh token: a token issued before the change keeps the old scopes for up to 24 hours.
 
 Only users with the **Manage Shopify** permission (`shopify.manage`, which administrators hold) can see the page. Orders, shipments, returns and stock movements are recorded as the user who last saved the settings. That user must stay a member of the organization and keep the right to create orders.
 
@@ -78,6 +91,7 @@ Each order webhook carries the whole order. The plugin compares that order with 
 - **Every ten minutes**, Inventoros reads back from Shopify the orders that changed since the last run, and applies them as if their webhooks had arrived.
   - It only imports orders created after the store was connected, so connecting never pulls in old orders.
   - It also registers again any order webhook Shopify removed. Shopify removes a subscription after its deliveries fail for about four hours.
+- An order with more than 50 lines (or a refund or fulfilment with more than 50) cannot be read back in one go. Recovery leaves it for you to enter by hand, rather than import it partly. Webhooks carry whole orders and are not limited.
 - **Recover orders** on the Shopify page imports the missing orders created since a date you choose, within the 60 days of orders Shopify gives apps.
 
 ### Stock
@@ -105,7 +119,7 @@ Both directions only create products that are missing on the other side. A produ
 - **Import from Shopify.**
   - A single-variant Shopify product becomes a simple Inventoros product with the variant's SKU.
   - A product with options becomes an Inventoros product with the same options and variants. Its own SKU is the Shopify handle in capitals.
-  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are left out.
+  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are left out. A product with more than 100 variants is reported, for you to create by hand.
   - With "also import stock", Shopify's available quantities at the mapped locations are booked as opening stock, into a bin of each mapped warehouse. No stock is pushed back to Shopify during the import, since Shopify already has those figures.
 - **Publish to Shopify.**
   - Each active Inventoros product whose SKUs Shopify does not have is created in Shopify, as a draft or as active.

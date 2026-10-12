@@ -59,12 +59,22 @@ class CatalogueSync
         $cache = [];
 
         PushGate::while(function () use ($member, $orgId, $currency, $withStock, &$existing, &$summary, &$cache) {
-            foreach ($this->client->products() as $product) {
+            $locations = array_column($this->connection->locationMap(), 'location_id')
+                ?: array_column((array) ($this->connection->locations ?? []), 'id');
+
+            foreach ($this->client->products($withStock ? $locations : []) as $product) {
                 $variants = array_values(array_filter(
                     (array) ($product['variants']['nodes'] ?? []),
                     fn ($v) => is_array($v) && trim((string) ($v['sku'] ?? '')) !== '',
                 ));
                 $title = (string) ($product['title'] ?? 'Untitled');
+
+                if (! empty($product['_incomplete'])) {
+                    $summary['failed']++;
+                    self::sample($summary['failed_sample'], $title.': more than 100 variants, create it by hand');
+
+                    continue;
+                }
 
                 if ($variants === []) {
                     $summary['no_sku']++;

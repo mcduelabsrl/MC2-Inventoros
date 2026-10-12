@@ -21,7 +21,8 @@
         "connected": "Collegato a {shop}",
         "not_connected": "Non collegato",
         "error": "Ultimo errore",
-        "acting_user": "Ordini e movimenti di stock sono registrati come {name}."
+        "acting_user": "Ordini e movimenti di stock sono registrati come {name}.",
+        "missing_scopes": "All'app Shopify non sono stati concessi {scopes}: la pubblicazione dei prodotti su Shopify, o la scelta del magazzino di ogni ordine con più sedi, non funzionerà finché non li aggiungi alla versione dell'app e la rilasci."
     },
     "connection": {
         "title": "Connessione",
@@ -32,10 +33,11 @@
         "client_secret": "Client secret",
         "client_secret_saved": "Salvato. Lascia vuoto per mantenerlo.",
         "api_version": "Versione API",
-        "scopes": "L'app richiede questi scope: {scopes}.",
+        "scopes": "Incolla questi permessi (access scopes) nel campo Scopes della versione dell'app nel Dev Dashboard di Shopify, poi rilascia la versione:",
         "save": "Salva e prova la connessione",
         "disconnect": "Scollega",
-        "disconnect_confirm": "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate."
+        "disconnect_confirm": "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate.",
+        "scopes_optional": "Facoltativi, ciascuno per una funzione: {scopes}. Il resto funziona anche senza."
     },
     "sync": {
         "title": "Impostazioni di sincronizzazione",

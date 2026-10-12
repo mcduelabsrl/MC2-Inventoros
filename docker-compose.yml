@@ -1,23 +1,33 @@
 # Inventoros local DEVELOPMENT stack (APP_DEBUG=true, bind-mounted source).
 # For production use docker-compose.prod.yml and the root Dockerfile instead.
 #
-# One-command boot:    docker compose up
-# With Postgres:       docker compose --profile postgres up
+# One-command boot:    docker compose up --build
 # With Redis cache:    docker compose --profile redis up
-# Both:                docker compose --profile postgres --profile redis up
 #
-# The default stack is app + worker + scheduler + mailpit using SQLite +
-# database queue/cache/session. Postgres and Redis are opt-in via profiles so
-# casual users get a zero-config boot.
+# The stack is app + worker + scheduler + PostgreSQL + Mailpit. Open
+# http://localhost:8080/install afterwards: the database step is already
+# filled in for the bundled PostgreSQL; its password is "inventoros" (or
+# POSTGRES_PASSWORD). The web installer needs MySQL/MariaDB or PostgreSQL,
+# which is why PostgreSQL is part of the default stack. Redis is opt-in.
 #
 # The `worker` container drains the database queue (WebhookDeliveryJob, queued
-# mail, etc.) and the `scheduler` container runs `schedule:run` every minute so
-# inventory:check-reorder-points and the retention prune commands actually fire.
-# Without these, async work piles up in the `jobs`/`webhook_deliveries` tables
-# and scheduled commands never run.
+# mail, plugin jobs, etc.) and the `scheduler` container runs `schedule:run`
+# every minute so scheduled commands actually fire. Without these, async work
+# piles up in the `jobs`/`webhook_deliveries` tables and scheduled commands
+# never run.
+#
+# All three PHP containers get the database settings from the environment
+# below and share one APP_KEY (the entrypoint keeps it in the storage volume),
+# so the worker and scheduler can read what the app encrypted, and the key
+# survives `docker compose up --build`.
+#
+# Compose reads ${...} values from a .env file next to this file, which is
+# also Laravel's own .env when you run the app without Docker. The database
+# settings therefore use POSTGRES_* names, so a DB_* line meant for a local
+# run (DB_CONNECTION=sqlite, DB_DATABASE=...) cannot leak into the stack.
 
 # Shared base for the three PHP containers (app, worker, scheduler). They run
-# the same image and mount the same volumes so they see one SQLite DB + storage.
+# the same image, mount the same volumes and use the same database.
 x-php: &php-base
   build:
     context: .
@@ -33,8 +43,15 @@ x-php: &php-base
     MAIL_PORT: 1025
     MAIL_FROM_ADDRESS: dev@inventoros.local
     MAIL_FROM_NAME: Inventoros
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_DATABASE: ${POSTGRES_DB:-inventoros}
+    DB_USERNAME: ${POSTGRES_USER:-inventoros}
+    DB_PASSWORD: ${POSTGRES_PASSWORD:-inventoros}
   volumes: &php-volumes
-    # Persist sqlite DB + storage across container restarts (shared by all three)
+    # Persist storage (shared APP_KEY, uploads, logs) across container
+    # restarts, shared by all three.
     - app-data:/app/database
     - app-storage:/app/storage
     # Live-reload PHP source during dev. Comment out for production-style image use.
@@ -53,7 +70,10 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
     depends_on:
-      - mailpit
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:80/up"]
       interval: 10s
@@ -103,17 +123,16 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    profiles: ["postgres"]
     environment:
-      POSTGRES_DB: ${DB_DATABASE:-inventoros}
-      POSTGRES_USER: ${DB_USERNAME:-inventoros}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-inventoros}
+      POSTGRES_DB: ${POSTGRES_DB:-inventoros}
+      POSTGRES_USER: ${POSTGRES_USER:-inventoros}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-inventoros}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-inventoros}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inventoros} -d ${POSTGRES_DB:-inventoros}"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -327,6 +327,22 @@ final class ShopifySyncTest extends TestCase
         $this->assertSame(1, ShopifyConnection::forOrganization($this->org->id)->orders_sync_summary['updated']);
     }
 
+    public function test_recovery_does_not_import_an_order_with_more_lines_than_one_page(): void
+    {
+        $this->makeProduct($this->org, ['sku' => 'MUG', 'stock' => 10]);
+        $this->connect(['orders_since' => now()->subHour()]);
+        $node = $this->graphqlOrder(2003, now()->subMinutes(5), [['sku' => 'MUG', 'quantity' => 1]]);
+        $node['lineItems']['pageInfo'] = ['hasNextPage' => true];
+        $this->fakeShopify(orders: [$node]);
+
+        RecoverOrders::dispatch($this->org->id);
+
+        $this->assertSame(0, Order::query()->count());
+        $record = ShopifyOrder::query()->sole();
+        $this->assertSame(ShopifyOrder::FAILED, $record->status);
+        $this->assertStringContainsString('Enter it by hand', $record->message);
+    }
+
     public function test_recovery_registers_missing_webhooks_again(): void
     {
         config(['app.url' => 'https://inventory.example.com']);
@@ -379,6 +395,25 @@ final class ShopifySyncTest extends TestCase
 
         $summary = ShopifyConnection::forOrganization($this->org->id)->catalogue_import_summary;
         $this->assertSame([2, 3, 1, 1, 0], [$summary['products'], $summary['variants'], $summary['existing'], $summary['no_sku'], $summary['failed']]);
+    }
+
+    public function test_pages_over_shopifys_cost_limit_are_asked_for_again_smaller(): void
+    {
+        $this->connect();
+        $this->fakeShopify(maxFirst: 2, products: [
+            $this->graphqlProduct(1, 'Candle', 'candle', [], [['sku' => 'CANDLE', 'price' => '12.00', 'available' => 7]]),
+            $this->graphqlProduct(2, 'Soap', 'soap', [], [['sku' => 'SOAP', 'price' => '5.00', 'available' => 3]]),
+        ]);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.catalogue.import'), ['with_stock' => true])->assertSessionHas('success');
+
+        $this->assertSame(7, Product::query()->where('sku', 'CANDLE')->sole()->stock);
+        $this->assertSame(3, Product::query()->where('sku', 'SOAP')->sole()->stock);
+        $this->assertNull(ShopifyConnection::forOrganization($this->org->id)->last_error);
+
+        $sizes = array_map(fn ($c) => $c['variables']['first'], $this->callsTo('products'));
+        $this->assertSame(10, $sizes[0]);
+        $this->assertSame(2, end($sizes), 'shrunk until Shopify accepted it');
     }
 
     public function test_catalogue_publish_creates_the_missing_products_in_shopify(): void
@@ -523,7 +558,7 @@ final class ShopifySyncTest extends TestCase
             'vendor' => 'Test',
             'productType' => '',
             'options' => $options === [] ? [['name' => 'Title', 'values' => ['Default Title']]] : $options,
-            'variants' => ['nodes' => array_map(fn ($v, $i) => [
+            'variants' => ['pageInfo' => ['hasNextPage' => false], 'nodes' => array_map(fn ($v, $i) => [
                 'id' => 'gid://shopify/ProductVariant/'.$id.$i,
                 'sku' => $v['sku'],
                 'barcode' => null,
@@ -533,7 +568,8 @@ final class ShopifySyncTest extends TestCase
                     'id' => 'gid://shopify/InventoryItem/'.$id.$i,
                     'tracked' => true,
                     'unitCost' => ['amount' => '4.00'],
-                    'inventoryLevels' => ['nodes' => [['location' => ['id' => self::LOCATION], 'quantities' => [['name' => 'available', 'quantity' => $v['available']]]]]],
+                    // One aliased inventoryLevel per mapped location (see ShopifyClient::products()).
+                    'l0' => ['location' => ['id' => self::LOCATION], 'quantities' => [['name' => 'available', 'quantity' => $v['available']]]],
                 ],
             ], $variants, array_keys($variants))],
         ];

@@ -1,6 +1,12 @@
 # Running Inventoros with Docker
 
-Single-image dev stack (built from `docker/dev.Dockerfile`): FrankenPHP (Caddy + PHP-FPM in one binary) serves the Laravel app, with Mailpit for catching outgoing email. Postgres and Redis are opt-in via Compose profiles so the default boot is zero-config.
+Single-image dev stack (built from `docker/dev.Dockerfile`):
+- FrankenPHP (Caddy + PHP-FPM in one binary) serves the Laravel app.
+- A worker and a scheduler container run the queue and `schedule:run`.
+- PostgreSQL holds the data.
+- Mailpit catches outgoing email.
+
+Redis is opt-in through a Compose profile.
 
 ## Quick start
 
@@ -9,7 +15,10 @@ Single-image dev stack (built from `docker/dev.Dockerfile`): FrankenPHP (Caddy +
 docker compose up --build
 ```
 
-When the container is ready (~60s on first build):
+When the app container is ready (~60s on first build), open http://localhost:8080/install and complete the web installer:
+
+- **Database step:** it is already filled in for the bundled PostgreSQL (host `postgres`, port `5432`, database and user `inventoros`). Enter the password `inventoros`.
+- **Admin step:** create your administrator.
 
 | URL | What |
 |---|---|
@@ -19,29 +28,39 @@ When the container is ready (~60s on first build):
 | http://localhost:8080/docs/api | Stoplight Elements API browser |
 | http://localhost:8025 | Mailpit web UI |
 
-Default install uses SQLite — no external DB needed. The DB file persists across restarts in the `app-data` named volume.
+You do not need a `.env` file to run the stack. Each container writes its own from `.env.example` on first boot. The database settings and the app's address come from `docker-compose.yml`.
 
-## With Postgres
+## Database
+
+The app, worker and scheduler all connect to the `postgres` service through environment variables set in `docker-compose.yml`, so they always use the same database. The data persists in the `postgres-data` volume.
+
+To change the credentials, set these before the first `docker compose up`, in your shell or in a `.env` next to `docker-compose.yml`:
+
+| Variable | Default |
+|---|---|
+| `POSTGRES_DB` | `inventoros` |
+| `POSTGRES_USER` | `inventoros` |
+| `POSTGRES_PASSWORD` | `inventoros` |
+| `POSTGRES_PORT` | `5432` (port published on your machine) |
+
+They are deliberately not called `DB_*`. Compose reads `${...}` values from the `.env` next to `docker-compose.yml`, which is also Laravel's `.env` when you run the app without Docker. A `DB_CONNECTION=sqlite` line there must not leak into the containers.
+
+The web installer only supports MySQL/MariaDB and PostgreSQL, which is why PostgreSQL is part of the default stack.
+
+## The application key
+
+The first container to start generates the `APP_KEY` and saves it in the shared storage volume (`storage/.docker-app-key`). The worker and scheduler, and any container recreated later (`docker compose up --build`), use the same key.
+
+This matters because the key encrypts sessions and stored secrets, such as plugin credentials. If the containers had different keys, queued jobs could not read those secrets. If the key changed on every rebuild, everyone would be signed out and the stored secrets would be lost.
+
+To use a key of your own, set `APP_KEY` in the environment of the three PHP services (for example in a `docker-compose.override.yml`).
+
+## Starting over
 
 ```bash
-docker compose --profile postgres up --build
+docker compose down -v   # removes the containers and every volume: database, storage, key
+docker compose up --build
 ```
-
-Then point the app at it by editing `.env` inside the container, or set these in `docker-compose.override.yml`:
-
-```yaml
-services:
-  app:
-    environment:
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: inventoros
-      DB_USERNAME: inventoros
-      DB_PASSWORD: inventoros
-```
-
-The entrypoint will wait up to 30 s for postgres before running migrations.
 
 ## With Redis
 
@@ -49,7 +68,24 @@ The entrypoint will wait up to 30 s for postgres before running migrations.
 docker compose --profile redis up --build
 ```
 
-Set `CACHE_STORE=redis`, `SESSION_DRIVER=redis`, `QUEUE_CONNECTION=redis`, `REDIS_HOST=redis` in `.env`.
+Then give the three PHP services `CACHE_STORE=redis`, `SESSION_DRIVER=redis`, `QUEUE_CONNECTION=redis` and `REDIS_HOST=redis`, in a `docker-compose.override.yml`:
+
+```yaml
+x-redis: &redis
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  QUEUE_CONNECTION: redis
+  REDIS_HOST: redis
+
+services:
+  app: { environment: *redis }
+  worker: { environment: *redis }
+  scheduler: { environment: *redis }
+```
+
+## Plugins
+
+Plugin code is baked into the image. After activating or deactivating a plugin, restart the long-running containers so they load it: `docker compose restart worker scheduler`.
 
 ## Common tasks
 
@@ -81,6 +117,8 @@ This stack is for development only. For production use the multi-stage `Dockerfi
 
 ## Troubleshooting
 
+- **The installer's database step asks for a MySQL/MariaDB server** — the checkout predates the bundled PostgreSQL. Update it and run `docker compose down -v && docker compose up --build`.
+- **Links point to `http://localhost` without the port** — a `.env` next to `docker-compose.yml` sets `APP_URL` (the one copied from `.env.example` does), and Compose passes it to the containers. Remove that line or set the full address.
 - **`docker compose ps` shows a container as unhealthy** — only `app` and `mailpit` have health checks; `worker` and `scheduler` run no web server and show as plain `Up`. If an older checkout shows them `unhealthy`, they inherited the FrankenPHP base image's health check: update your checkout. For `app`, `docker inspect --format '{{json .State.Health}}' <container>` shows the failing probe.
 - **`storage/` writes fail** — make sure the `app-storage` volume is healthy: `docker volume inspect inventoros_app-storage`. Recreate with `docker compose down -v` if needed.
 - **`docker compose up` never finishes the build** — first build downloads ~500 MB (PHP + Node + Composer + npm deps). Use `docker compose build --progress=plain` to watch what's happening.

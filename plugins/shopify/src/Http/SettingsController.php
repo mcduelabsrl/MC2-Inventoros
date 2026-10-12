@@ -56,6 +56,7 @@ class SettingsController
                 'last_full_sync_at' => $connection->last_full_sync_at?->toIso8601String(),
                 'last_full_sync_summary' => $connection->last_full_sync_summary,
                 'last_error' => $connection->last_error,
+                'missing_scopes' => $connection->missing_scopes ?? [],
                 'webhooks_checked_at' => $connection->webhooks_checked_at?->toIso8601String(),
                 'orders_since' => $connection->orders_since?->toIso8601String(),
                 'orders_synced_at' => $connection->orders_synced_at?->toIso8601String(),
@@ -67,6 +68,7 @@ class SettingsController
             'webhookUrl' => $connection === null ? null : self::webhookUrl($connection),
             'defaultApiVersion' => ShopifyConnection::DEFAULT_API_VERSION,
             'requiredScopes' => ShopifyClient::REQUIRED_SCOPES,
+            'optionalScopes' => ShopifyClient::OPTIONAL_SCOPES,
             'warehouses' => Warehouse::query()
                 ->where('organization_id', $orgId)
                 ->orderBy('name')
@@ -146,7 +148,11 @@ class SettingsController
 
         // Prove the credentials work and refresh the store's locations.
         try {
-            $info = (new ShopifyClient($connection))->shopInfo();
+            $client = new ShopifyClient($connection);
+            // Always a fresh token here: one issued before the app's scopes
+            // changed would keep the old scopes for up to 24 hours.
+            $client->refreshToken();
+            $info = $client->shopInfo();
         } catch (ShopifyException $e) {
             $connection->forceFill(['shop_name' => null, 'last_error' => $e->getMessage()])->save();
 
@@ -165,6 +171,7 @@ class SettingsController
             'shop_name' => $info['name'],
             'locations' => $info['locations'],
             'location_map' => $map,
+            'missing_scopes' => $info['missing_optional_scopes'],
             'last_error' => null,
         ])->save();
         $location = $map[0]['location_id'] ?? null;

@@ -22,15 +22,22 @@ use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
  */
 class ShopifyClient
 {
-    /** Scopes the Dev Dashboard app must be granted. */
+    /** Scopes the Dev Dashboard app must be granted: orders, stock and locations. */
     public const REQUIRED_SCOPES = [
         'read_orders',
         'read_products',
-        'write_products',
         'read_inventory',
         'write_inventory',
         'read_locations',
+    ];
+
+    /** Scopes that unlock one feature each; without them the rest works. */
+    public const OPTIONAL_SCOPES = [
+        // Publish Inventoros products to Shopify.
+        'write_products',
+        // Import the catalogue: Shopify asks for it to read variant prices.
         'read_markets_home',
+        // With several locations: ship each order from its assigned location's warehouse.
         'read_assigned_fulfillment_orders',
         'read_merchant_managed_fulfillment_orders',
     ];
@@ -42,12 +49,12 @@ class ShopifyClient
     public const ORDER_FIELDS = 'id legacyResourceId name email note createdAt processedAt updatedAt cancelledAt currencyCode displayFinancialStatus '
         .'shippingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
         .'billingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
-        .'lineItems(first: 250) { nodes { id sku name quantity currentQuantity originalUnitPriceSet { shopMoney { amount } } '
-        .'discountAllocations { allocatedAmountSet { shopMoney { amount } } } taxLines { priceSet { shopMoney { amount } } } } } '
-        .'shippingLines(first: 20) { nodes { originalPriceSet { shopMoney { amount } } discountedPriceSet { shopMoney { amount } } } } '
-        .'refunds { id createdAt refundLineItems(first: 250) { nodes { quantity restockType lineItem { id sku } } } } '
+        .'lineItems(first: 50) { nodes { id sku name quantity currentQuantity originalUnitPriceSet { shopMoney { amount } } '
+        .'discountAllocations { allocatedAmountSet { shopMoney { amount } } } taxLines { priceSet { shopMoney { amount } } } } pageInfo { hasNextPage } } '
+        .'shippingLines(first: 10) { nodes { originalPriceSet { shopMoney { amount } } discountedPriceSet { shopMoney { amount } } } } '
+        .'refunds { id createdAt refundLineItems(first: 50) { nodes { quantity restockType lineItem { id sku } } pageInfo { hasNextPage } } } '
         .'fulfillments { id status displayStatus createdAt location { id } trackingInfo { company number url } '
-        .'fulfillmentLineItems(first: 250) { nodes { quantity lineItem { id sku } } } }';
+        .'fulfillmentLineItems(first: 50) { nodes { quantity lineItem { id sku } } pageInfo { hasNextPage } } }';
 
     /** inventorySetQuantities accepts at most this many quantities per call. */
     public const MAX_QUANTITIES_PER_CALL = 250;
@@ -63,6 +70,17 @@ class ShopifyClient
      */
     public function shopInfo(): array
     {
+        // Read what the store actually granted first (this needs no scope),
+        // so a missing scope is named instead of failing on some field.
+        $granted = $this->grantedScopes();
+        $missing = array_values(array_diff(self::REQUIRED_SCOPES, self::implied($granted)));
+        if ($missing !== []) {
+            throw new ShopifyException(
+                'The Shopify app is missing these access scopes: '.implode(', ', $missing).'. '
+                .'Add them to the app\'s version in the Shopify Dev Dashboard, release the version, approve the new scopes in the store if Shopify asks, then save again.'
+            );
+        }
+
         $data = $this->graphql('query ShopInfo { shop { name myshopifyDomain } locations(first: 100) { nodes { id name isActive } } }');
 
         $locations = [];
@@ -72,7 +90,43 @@ class ShopifyClient
             }
         }
 
-        return ['name' => (string) ($data['shop']['name'] ?? $this->connection->shop_domain), 'locations' => $locations];
+        return [
+            'name' => (string) ($data['shop']['name'] ?? $this->connection->shop_domain),
+            'locations' => $locations,
+            'missing_optional_scopes' => array_values(array_diff(self::OPTIONAL_SCOPES, self::implied($granted))),
+        ];
+    }
+
+    /**
+     * The access scopes the store granted the app.
+     *
+     * @return array<int, string>
+     */
+    public function grantedScopes(): array
+    {
+        $data = $this->graphql('query GrantedScopes { currentAppInstallation { accessScopes { handle } } }');
+
+        return array_values(array_filter(array_map(
+            fn ($scope) => is_array($scope) ? (string) ($scope['handle'] ?? '') : '',
+            (array) ($data['currentAppInstallation']['accessScopes'] ?? []),
+        )));
+    }
+
+    /**
+     * Granted scopes plus the ones they imply: write_x includes read_x.
+     *
+     * @param  array<int, string>  $granted
+     * @return array<int, string>
+     */
+    private static function implied(array $granted): array
+    {
+        foreach ($granted as $scope) {
+            if (str_starts_with($scope, 'write_')) {
+                $granted[] = 'read_'.substr($scope, 6);
+            }
+        }
+
+        return array_values(array_unique($granted));
     }
 
     /**
@@ -236,27 +290,17 @@ class ShopifyClient
      *
      * @return \Generator<int, array<string, mixed>> GraphQL order nodes
      */
-    public function ordersUpdatedSince(\DateTimeInterface $since, int $maxPages = 20): \Generator
+    public function ordersUpdatedSince(\DateTimeInterface $since, int $maxPages = 50): \Generator
     {
-        $cursor = null;
-        $pages = 0;
         $query = "updated_at:>='".gmdate('Y-m-d\\TH:i:s\\Z', $since->getTimestamp())."'";
 
-        do {
-            $data = $this->graphql(
-                'query Orders($query: String!, $cursor: String) { orders(first: 25, after: $cursor, query: $query, sortKey: UPDATED_AT) { nodes { '.self::ORDER_FIELDS.' } pageInfo { hasNextPage endCursor } } }',
-                ['query' => $query, 'cursor' => $cursor],
-            );
-
-            foreach ($data['orders']['nodes'] ?? [] as $node) {
-                if (is_array($node)) {
-                    yield $node;
-                }
-            }
-
-            $page = $data['orders']['pageInfo'] ?? [];
-            $cursor = ($page['hasNextPage'] ?? false) ? ($page['endCursor'] ?? null) : null;
-        } while ($cursor !== null && ++$pages < $maxPages);
+        yield from $this->paginate(
+            'query Orders($first: Int!, $query: String!, $cursor: String) { orders(first: $first, after: $cursor, query: $query, sortKey: UPDATED_AT) { nodes { '.self::ORDER_FIELDS.' } pageInfo { hasNextPage endCursor } } }',
+            'orders',
+            ['query' => $query],
+            first: 10,
+            maxPages: $maxPages,
+        );
     }
 
     /**
@@ -298,31 +342,101 @@ class ShopifyClient
     }
 
     /**
-     * Every product with its options, variants and per-location stock.
+     * Every product with its options and variants, and each variant's
+     * available stock at the given locations (inventoryLevels, as in the
+     * Admin API's own shape).
      *
-     * @return \Generator<int, array<string, mixed>> GraphQL product nodes
+     * Stock is read with one aliased inventoryLevel per location, not the
+     * inventoryLevels connection: nested connections multiply into the
+     * query cost, and Shopify refuses a query costing over 1000 points.
+     *
+     * @param  array<int, string>  $locationIds  location gids
+     * @return \Generator<int, array<string, mixed>> GraphQL product nodes; `_incomplete` when a product has more variants than one page
      */
-    public function products(): \Generator
+    public function products(array $locationIds = []): \Generator
+    {
+        $levels = '';
+        foreach (array_values($locationIds) as $i => $locationId) {
+            $levels .= ' l'.$i.': inventoryLevel(locationId: '.json_encode((string) $locationId).') { location { id } quantities(names: ["available"]) { name quantity } }';
+        }
+
+        $query = 'query Products($first: Int!, $cursor: String) { products(first: $first, after: $cursor) { nodes { id legacyResourceId title handle descriptionHtml status options { name values } '
+            .'variants(first: 100) { nodes { id sku barcode price selectedOptions { name value } inventoryItem { id tracked unitCost { amount }'.$levels.' } } pageInfo { hasNextPage } } } pageInfo { hasNextPage endCursor } } }';
+
+        foreach ($this->paginate($query, 'products', [], first: 10) as $product) {
+            $variants = [];
+            foreach ((array) ($product['variants']['nodes'] ?? []) as $variant) {
+                if (! is_array($variant)) {
+                    continue;
+                }
+                $item = (array) ($variant['inventoryItem'] ?? []);
+                $nodes = [];
+                foreach ($item as $key => $value) {
+                    if (preg_match('/^l\d+$/', (string) $key)) {
+                        if (is_array($value)) {
+                            $nodes[] = $value;
+                        }
+                        unset($item[$key]);
+                    }
+                }
+                $item['inventoryLevels'] = ['nodes' => $nodes];
+                $variant['inventoryItem'] = $item;
+                $variants[] = $variant;
+            }
+            $product['_incomplete'] = (bool) ($product['variants']['pageInfo']['hasNextPage'] ?? false);
+            $product['variants'] = ['nodes' => $variants];
+
+            yield $product;
+        }
+    }
+
+    /**
+     * Walk a connection page by page. The query takes $first and $cursor.
+     * When Shopify refuses a page for costing more than its 1000-point
+     * limit, the page size shrinks in proportion and the page is asked for
+     * again; only a single record over the limit is an error.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return \Generator<int, array<string, mixed>>
+     */
+    private function paginate(string $query, string $root, array $variables, int $first, int $maxPages = 1000): \Generator
     {
         $cursor = null;
+        $pages = 0;
 
-        do {
-            $data = $this->graphql(
-                'query Products($cursor: String) { products(first: 25, after: $cursor) { nodes { id legacyResourceId title handle descriptionHtml status vendor productType options { name values } '
-                .'variants(first: 100) { nodes { id sku barcode price selectedOptions { name value } inventoryItem { id tracked unitCost { amount } '
-                .'inventoryLevels(first: 20) { nodes { location { id } quantities(names: ["available"]) { name quantity } } } } } } } pageInfo { hasNextPage endCursor } } }',
-                ['cursor' => $cursor],
-            );
+        while (true) {
+            try {
+                $data = $this->graphql($query, $variables + ['first' => $first, 'cursor' => $cursor]);
+            } catch (ShopifyException $e) {
+                $cost = self::costOver($e);
+                if ($cost === null || $first <= 1) {
+                    throw $e;
+                }
+                $first = max(1, min($first - 1, intdiv($first * 900, $cost)));
 
-            foreach ($data['products']['nodes'] ?? [] as $node) {
+                continue; // the same page again, smaller
+            }
+
+            foreach ($data[$root]['nodes'] ?? [] as $node) {
                 if (is_array($node)) {
                     yield $node;
                 }
             }
 
-            $page = $data['products']['pageInfo'] ?? [];
+            $page = $data[$root]['pageInfo'] ?? [];
             $cursor = ($page['hasNextPage'] ?? false) ? ($page['endCursor'] ?? null) : null;
-        } while ($cursor !== null);
+            if ($cursor === null || ++$pages >= $maxPages) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * The requested cost when Shopify refused a query as too costly, else null.
+     */
+    private static function costOver(ShopifyException $e): ?int
+    {
+        return preg_match('/Query cost is (\d+), which exceeds/', $e->getMessage(), $m) === 1 ? (int) $m[1] : null;
     }
 
     /**
@@ -404,8 +518,11 @@ class ShopifyClient
     {
         $response = $this->post($query, $variables);
 
-        if ($response->status() === 401) {
-            // A token revoked or rotated early: get a new one, once.
+        // A token revoked or rotated early (401), or one issued before the
+        // app was granted more scopes (ACCESS_DENIED: tokens live 24 hours
+        // and carry the scopes of the moment they were issued): get a new
+        // one, once.
+        if ($response->status() === 401 || self::accessDenied($response)) {
             $this->forgetToken();
             $response = $this->post($query, $variables);
         }
@@ -425,10 +542,39 @@ class ShopifyClient
             $messages = is_array($errors) ? array_map(fn ($e) => is_array($e) ? ($e['message'] ?? json_encode($e)) : (string) $e, $errors) : [(string) $errors];
             $throttled = collect(is_array($errors) ? $errors : [])->contains(fn ($e) => is_array($e) && ($e['extensions']['code'] ?? null) === 'THROTTLED');
 
-            throw new ShopifyException('Shopify API error: '.implode('; ', $messages), transient: $throttled);
+            $hint = self::accessDenied($response)
+                ? ' The Shopify app lacks an access scope this needs: check the scopes of its version in the Dev Dashboard (see the plugin README), release it and approve it in the store.'
+                : '';
+
+            throw new ShopifyException('Shopify API error: '.implode('; ', $messages).$hint, transient: $throttled);
         }
 
         return is_array($json['data'] ?? null) ? $json['data'] : [];
+    }
+
+    private static function accessDenied(Response $response): bool
+    {
+        $errors = $response->json('errors');
+        if (! is_array($errors)) {
+            return false;
+        }
+
+        foreach ($errors as $error) {
+            if (is_array($error) && (($error['extensions']['code'] ?? null) === 'ACCESS_DENIED' || str_starts_with((string) ($error['message'] ?? ''), 'Access denied'))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Drop the cached access token, so the next call gets a new one with
+     * the scopes the app has now.
+     */
+    public function refreshToken(): void
+    {
+        $this->forgetToken();
     }
 
     /**

@@ -106,6 +106,8 @@ $addColumns('shopify_connections', [
     'webhooks_checked_at' => fn (Blueprint $t) => $t->timestamp('webhooks_checked_at')->nullable(),
     'catalogue_import_summary' => fn (Blueprint $t) => $t->json('catalogue_import_summary')->nullable(),
     'catalogue_publish_summary' => fn (Blueprint $t) => $t->json('catalogue_publish_summary')->nullable(),
+    // 1.1.1: optional scopes the store has not granted, shown on the settings page.
+    'missing_scopes' => fn (Blueprint $t) => $t->json('missing_scopes')->nullable(),
 ]);
 
 $addColumns('shopify_orders', [

@@ -195,6 +195,6 @@ docker build -t inventoros .
 
 ## Development stack
 
-`docker-compose.yml` in the repository is a development environment, not a deployment: it bind-mounts the source, enables `APP_DEBUG`, uses SQLite and includes Mailpit. Start it with `docker compose up --build` and see `docker/README.md` for details.
+`docker-compose.yml` in the repository is a development environment, not a deployment: it bind-mounts the source, enables `APP_DEBUG`, and includes PostgreSQL (already filled in on the installer's database step) and Mailpit. Start it with `docker compose up --build` and see `docker/README.md` for details.
 
 Report an issue: https://github.com/Inventoros/Inventoros/issues
