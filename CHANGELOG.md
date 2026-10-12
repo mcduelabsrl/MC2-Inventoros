@@ -14,6 +14,7 @@ Full release notes, with the pull request behind each change, are on [GitHub Rel
 
 ### Fixed
 
+- Shopify plugin: orders paid in Shopify showed as unpaid in Inventoros. What Shopify received is now recorded as a payment on the order, and money refunded in Shopify as a refund. **Recover orders** can go back further than 60 days when the app has `read_all_orders`.
 - Shopify plugin: importing older orders with **Recover orders** after importing the catalogue with stock took their stock a second time, since Shopify's figures already counted them. Orders and refunds from before Inventoros took its stock from Shopify (the connection, or a catalogue import with stock) are now imported as history: no stock movement, no returns, no `order_created` announcement.
 - Shopify plugin: jobs queued right after activating the plugin (such as the catalogue import) failed at once, because the queue worker had started before the plugin was active. Activating or deactivating the plugin now restarts the queue workers (`queue:restart`).
 - Shopify plugin: the catalogue import (and the order recovery, on large orders) failed with "Query cost is …, which exceeds the single query max cost limit (1000)". Stock is now read per mapped location instead of through a nested list, inner lists are smaller, and a page Shopify refuses as too costly is asked for again with fewer records. Orders and products too large to read back whole are reported instead of imported partly. `read_markets_home` is listed again, as optional: Shopify needs it to read variant prices for the catalogue import.

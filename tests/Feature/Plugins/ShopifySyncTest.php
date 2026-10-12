@@ -12,6 +12,7 @@ use App\Models\Inventory\ProductOption;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Order\Order;
+use App\Models\Order\OrderPayment;
 use App\Models\Order\ReturnOrder;
 use App\Models\Shipping\Shipment;
 use App\Models\Warehouse;
@@ -164,6 +165,58 @@ final class ShopifySyncTest extends TestCase
         $this->assertSame(0, Order::query()->count());
         $this->assertSame(0, ShopifyOrder::query()->count());
         $this->assertSame(10, $product->fresh()->stock);
+    }
+
+    public function test_a_paid_shopify_order_is_paid_in_inventoros(): void
+    {
+        $this->makeProduct($this->org, ['sku' => 'MUG', 'stock' => 10]);
+        $connection = $this->connect(['push_inventory' => false]);
+        $payload = $this->orderPayload([$this->line('MUG', 2, '9.00')], ['financial_status' => 'paid', 'name' => '#1001']);
+
+        $this->postWebhook('orders/create', $payload, $connection->webhook_token)->assertOk();
+        $this->postWebhook('orders/updated', $payload, $connection->webhook_token)->assertOk();
+
+        $order = Order::query()->sole();
+        $this->assertSame('paid', $order->payment_status->value);
+        $this->assertSame('18.00', (string) $order->amount_paid);
+        $payment = OrderPayment::query()->sole();
+        $this->assertSame('Shopify #1001', $payment->reference);
+    }
+
+    public function test_a_partly_paid_order_records_what_shopify_received(): void
+    {
+        $this->makeProduct($this->org, ['sku' => 'MUG', 'stock' => 10]);
+        $connection = $this->connect(['push_inventory' => false]);
+        $payload = $this->orderPayload([$this->line('MUG', 5, '10.00')], ['financial_status' => 'partially_paid', 'total_price' => '50.00', 'total_outstanding' => '20.00']);
+
+        $this->postWebhook('orders/create', $payload, $connection->webhook_token)->assertOk();
+
+        $order = Order::query()->sole();
+        $this->assertSame('30.00', (string) $order->amount_paid);
+        $this->assertSame('partial', $order->payment_status->value);
+
+        // Paid in full later: only the rest is recorded.
+        $payload['financial_status'] = 'paid';
+        $payload['updated_at'] = now()->addMinute()->toIso8601String();
+        $this->postWebhook('orders/updated', $payload, $connection->webhook_token)->assertOk();
+
+        $this->assertSame('50.00', (string) $order->fresh()->amount_paid);
+        $this->assertSame(2, OrderPayment::query()->count());
+    }
+
+    public function test_money_refunded_in_shopify_is_refunded_in_inventoros(): void
+    {
+        [$connection, , $payload] = $this->importedOrder(quantity: 2);
+        $payload['financial_status'] = 'partially_refunded';
+        $payload['refunds'] = [['id' => 7301, 'created_at' => now()->toIso8601String(), 'refund_line_items' => [], 'transactions' => [['kind' => 'refund', 'status' => 'success', 'amount' => '5.00']]]];
+        $payload['updated_at'] = '2026-10-01T12:00:00+00:00';
+
+        $this->postWebhook('orders/updated', $payload, $connection->webhook_token)->assertOk();
+        $this->postWebhook('orders/updated', $payload, $connection->webhook_token)->assertOk();
+
+        $order = Order::query()->sole();
+        $this->assertSame('13.00', (string) $order->amount_paid);
+        $this->assertSame(1, OrderPayment::query()->where('type', 'refund')->count());
     }
 
     // ------------------------------------------------------------------
@@ -339,6 +392,19 @@ final class ShopifySyncTest extends TestCase
         $this->assertSame(0, ReturnOrder::query()->count());
         $this->assertSame('history', ShopifyLink::query()->where('kind', ShopifyLink::REFUND)->sole()->state);
         $this->assertStringContainsString('Imported as history', ShopifyOrder::query()->sole()->message);
+    }
+
+    public function test_recovering_older_than_60_days_needs_read_all_orders(): void
+    {
+        $connection = $this->connect(['missing_scopes' => ['read_all_orders']]);
+        $this->actingAs($this->admin)
+            ->post(route('plg.shopify.recover'), ['from' => now()->subDays(120)->toDateString()])
+            ->assertSessionHasErrors('from');
+
+        $connection->forceFill(['missing_scopes' => []])->save();
+        $this->actingAs($this->admin)
+            ->post(route('plg.shopify.recover'), ['from' => now()->subDays(120)->toDateString()])
+            ->assertSessionHas('success');
     }
 
     public function test_recovery_applies_a_fulfilment_whose_webhook_was_missed(): void

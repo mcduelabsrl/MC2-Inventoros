@@ -37,6 +37,8 @@ class ShopifyClient
         'write_products',
         // Import the catalogue: Shopify asks for it to read variant prices.
         'read_markets_home',
+        // Recover orders older than 60 days.
+        'read_all_orders',
         // With several locations: ship each order from its assigned location's warehouse.
         'read_assigned_fulfillment_orders',
         'read_merchant_managed_fulfillment_orders',
@@ -46,13 +48,13 @@ class ShopifyClient
     public const WEBHOOK_TOPICS = ['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED'];
 
     /** Fields of an order, for reconciliation and recovery (see OrderPayload). */
-    public const ORDER_FIELDS = 'id legacyResourceId name email note createdAt processedAt updatedAt cancelledAt currencyCode displayFinancialStatus '
+    public const ORDER_FIELDS = 'id legacyResourceId name email note createdAt processedAt updatedAt cancelledAt currencyCode displayFinancialStatus totalReceivedSet { shopMoney { amount } } '
         .'shippingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
         .'billingAddress { firstName lastName company address1 address2 city zip provinceCode country phone } '
         .'lineItems(first: 50) { nodes { id sku name quantity currentQuantity originalUnitPriceSet { shopMoney { amount } } '
         .'discountAllocations { allocatedAmountSet { shopMoney { amount } } } taxLines { priceSet { shopMoney { amount } } } } pageInfo { hasNextPage } } '
         .'shippingLines(first: 10) { nodes { originalPriceSet { shopMoney { amount } } discountedPriceSet { shopMoney { amount } } } } '
-        .'refunds { id createdAt refundLineItems(first: 50) { nodes { quantity restockType lineItem { id sku } } pageInfo { hasNextPage } } } '
+        .'refunds { id createdAt totalRefundedSet { shopMoney { amount } } refundLineItems(first: 50) { nodes { quantity restockType lineItem { id sku } } pageInfo { hasNextPage } } } '
         .'fulfillments { id status displayStatus createdAt location { id } trackingInfo { company number url } '
         .'fulfillmentLineItems(first: 50) { nodes { quantity lineItem { id sku } } pageInfo { hasNextPage } } }';
 

@@ -7,8 +7,8 @@ namespace Inventoros\Plugins\Shopify\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A Shopify fulfilment or refund and the Inventoros shipment or return it
- * became, so reconciling an order applies each one once.
+ * A Shopify fulfilment, refund or payment and the Inventoros shipment,
+ * return or payment it became, so reconciling an order applies each once.
  *
  * @property int $id
  * @property int $organization_id
@@ -23,6 +23,12 @@ class ShopifyLink extends Model
     public const FULFILLMENT = 'fulfillment';
 
     public const REFUND = 'refund';
+
+    /** The money Shopify received for an order; state holds the amount recorded so far. */
+    public const PAYMENT = 'payment';
+
+    /** The money a Shopify refund gave back. */
+    public const REFUND_PAYMENT = 'refund_payment';
 
     protected $table = 'shopify_links';
 

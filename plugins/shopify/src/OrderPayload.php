@@ -51,6 +51,8 @@ final class OrderPayload
             'note' => $node['note'] ?? null,
             'currency' => $node['currencyCode'] ?? null,
             'financial_status' => isset($node['displayFinancialStatus']) ? strtolower((string) $node['displayFinancialStatus']) : null,
+            // Received before refunds; refunds carry their own amounts.
+            'total_received' => isset($node['totalReceivedSet']) ? $money($node['totalReceivedSet']) : null,
             'created_at' => $node['createdAt'] ?? null,
             'processed_at' => $node['processedAt'] ?? null,
             'updated_at' => $node['updatedAt'] ?? null,
@@ -74,6 +76,7 @@ final class OrderPayload
             'refunds' => array_map(fn (array $refund) => [
                 'id' => ShopifyClient::legacyId($refund['id'] ?? ''),
                 'created_at' => $refund['createdAt'] ?? null,
+                'refunded_amount' => isset($refund['totalRefundedSet']) ? $money($refund['totalRefundedSet']) : null,
                 'refund_line_items' => array_map(fn (array $item) => [
                     'line_item_id' => ShopifyClient::legacyId($item['lineItem']['id'] ?? ''),
                     'quantity' => (int) ($item['quantity'] ?? 0),

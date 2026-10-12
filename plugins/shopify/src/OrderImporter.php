@@ -16,6 +16,7 @@ use App\Models\Order\Order;
 use App\Models\Scopes\OrganizationScope;
 use App\Models\Shipping\Shipment;
 use App\Models\User;
+use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\Organizations\ActiveOrganization;
 use App\Services\ReturnOrderService;
@@ -199,6 +200,7 @@ class OrderImporter
                 $order->refresh();
                 array_push($notes, ...$this->applyFulfillments($connection, $order, $payload, $member));
                 array_push($notes, ...$this->applyRefunds($connection, $order, $payload, $member));
+                array_push($notes, ...$this->applyPayments($connection, $order->refresh(), $payload, $member));
 
                 $notes = array_values(array_filter($notes));
 
@@ -519,6 +521,125 @@ class OrderImporter
         }
 
         return $notes;
+    }
+
+    // ------------------------------------------------------------------
+    // 6. Payments
+    // ------------------------------------------------------------------
+
+    /**
+     * Record the money Shopify received for the order, and the money its
+     * refunds gave back, so the order's payment status matches Shopify.
+     * A paid order is settled at the Inventoros total, which can differ from
+     * Shopify's (lines without a matching SKU, rounding); a partly paid one
+     * up to the amount Shopify received.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<int, string> notes
+     */
+    private function applyPayments(ShopifyConnection $connection, Order $order, array $payload, User $member): array
+    {
+        $notes = [];
+        $orgId = $connection->organization_id;
+        $reference = 'Shopify '.($payload['name'] ?? '#'.$payload['id']);
+        $status = (string) ($payload['financial_status'] ?? '');
+
+        // 1. Money received.
+        $target = match (true) {
+            in_array($status, ['paid', 'partially_refunded', 'refunded'], true) => (string) $order->total,
+            $status === 'partially_paid' => Money::min($this->receivedAmount($payload), (string) $order->total),
+            default => '0.00',
+        };
+
+        $link = ShopifyLink::query()->firstOrNew(['organization_id' => $orgId, 'kind' => ShopifyLink::PAYMENT, 'shopify_id' => (string) $payload['id']]);
+        $recorded = Money::of($link->state ?? '0');
+        $due = Money::min(Money::subtract($target, $recorded), $order->unpaidAmount());
+
+        if (Money::compare($due, '0') > 0 && $order->status !== OrderStatus::CANCELLED) {
+            try {
+                app(OrderPaymentService::class)->record($order, $member, [
+                    'amount' => $due,
+                    'method' => 'other',
+                    'reference' => $reference,
+                    'paid_at' => $payload['processed_at'] ?? $payload['created_at'] ?? now(),
+                    'notes' => 'Paid in Shopify.',
+                ]);
+                $link->fill(['shopify_order_id' => (string) $payload['id'], 'state' => Money::add($recorded, $due)])->save();
+                $order->refresh();
+            } catch (ValidationException $e) {
+                $notes[] = 'The Shopify payment was not recorded: '.implode(' ', $e->validator->errors()->all());
+            }
+        }
+
+        // 2. Money refunded, one record per Shopify refund.
+        foreach ((array) ($payload['refunds'] ?? []) as $refund) {
+            if (! is_array($refund) || empty($refund['id'])) {
+                continue;
+            }
+            $attributes = ['organization_id' => $orgId, 'kind' => ShopifyLink::REFUND_PAYMENT, 'shopify_id' => (string) $refund['id']];
+            if (ShopifyLink::query()->where($attributes)->exists()) {
+                continue;
+            }
+
+            $amount = Money::min($this->refundedAmount($refund), (string) $order->amount_paid);
+            if (Money::compare($amount, '0') <= 0) {
+                ShopifyLink::query()->create($attributes + ['shopify_order_id' => (string) $payload['id'], 'state' => '0.00']);
+
+                continue;
+            }
+
+            try {
+                app(OrderPaymentService::class)->refund($order, $member, [
+                    'amount' => $amount,
+                    'method' => 'other',
+                    'reference' => $reference.' refund '.$refund['id'],
+                    'paid_at' => $refund['created_at'] ?? now(),
+                    'notes' => 'Refunded in Shopify.',
+                ]);
+                ShopifyLink::query()->create($attributes + ['shopify_order_id' => (string) $payload['id'], 'state' => $amount]);
+                $order->refresh();
+            } catch (ValidationException $e) {
+                $notes[] = 'Shopify refund '.$refund['id'].' was not recorded as money returned: '.implode(' ', $e->validator->errors()->all());
+            }
+        }
+
+        return $notes;
+    }
+
+    /**
+     * What Shopify received for an order, before refunds.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function receivedAmount(array $payload): string
+    {
+        if (isset($payload['total_received']) && is_numeric($payload['total_received'])) {
+            return Money::of($payload['total_received']);
+        }
+
+        // Webhooks carry no transactions: the total less what is still owed.
+        return Money::max(Money::subtract(self::shopMoney($payload, 'total_price'), self::shopMoney($payload, 'total_outstanding')), '0');
+    }
+
+    /**
+     * The money a refund gave back.
+     *
+     * @param  array<string, mixed>  $refund
+     */
+    private function refundedAmount(array $refund): string
+    {
+        if (isset($refund['refunded_amount']) && is_numeric($refund['refunded_amount'])) {
+            return Money::of($refund['refunded_amount']);
+        }
+
+        $total = '0.00';
+        foreach ((array) ($refund['transactions'] ?? []) as $transaction) {
+            if (is_array($transaction) && ($transaction['kind'] ?? '') === 'refund' && ($transaction['status'] ?? 'success') === 'success') {
+                $total = Money::add($total, self::shopMoney($transaction, 'amount'));
+            }
+        }
+
+        return $total;
     }
 
     /**
