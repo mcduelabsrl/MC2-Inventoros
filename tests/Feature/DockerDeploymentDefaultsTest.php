@@ -79,4 +79,35 @@ final class DockerDeploymentDefaultsTest extends TestCase
         $this->assertSame('${APP_URL:-http://localhost:${APP_PORT:-8080}}', $env['APP_URL']);
         $this->assertSame(['${APP_PORT:-8080}:8080'], $this->compose('docker-compose.prod.yml')['services']['app']['ports']);
     }
+
+    public function test_the_dev_stack_runs_its_own_postgresql_for_every_php_container(): void
+    {
+        $services = $this->compose('docker-compose.yml')['services'];
+
+        // The web installer has no SQLite option, so the database cannot be opt-in.
+        $this->assertArrayNotHasKey('profiles', $services['postgres']);
+        $this->assertSame('service_healthy', $services['app']['depends_on']['postgres']['condition']);
+
+        foreach (['app', 'worker', 'scheduler'] as $service) {
+            $env = $services[$service]['environment'];
+
+            $this->assertSame('pgsql', $env['DB_CONNECTION'], $service);
+            $this->assertSame('postgres', $env['DB_HOST'], $service);
+            // POSTGRES_* names, never DB_*: Compose reads ${...} from the
+            // project .env, which is Laravel's own (DB_CONNECTION=sqlite).
+            $this->assertSame('${POSTGRES_DB:-inventoros}', $env['DB_DATABASE'], $service);
+            $this->assertSame('${POSTGRES_PASSWORD:-inventoros}', $env['DB_PASSWORD'], $service);
+        }
+
+        $this->assertSame('${POSTGRES_DB:-inventoros}', $services['postgres']['environment']['POSTGRES_DB']);
+    }
+
+    public function test_the_dev_containers_share_one_app_key(): void
+    {
+        $entrypoint = file_get_contents(base_path('docker/entrypoint.sh'));
+
+        // Kept in the storage volume all three PHP containers mount.
+        $this->assertStringContainsString('key_file=storage/.docker-app-key', $entrypoint);
+        $this->assertContains('app-storage:/app/storage', $this->compose('docker-compose.yml')['x-php']['volumes']);
+    }
 }

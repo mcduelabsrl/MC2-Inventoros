@@ -14,6 +14,7 @@ Full release notes, with the pull request behind each change, are on [GitHub Rel
 
 ### Fixed
 
+- Docker (development stack): `docker compose up` now includes PostgreSQL and passes its settings to the app, worker and scheduler, so the installer's database step is already filled in. Before, the stack defaulted to SQLite, which the installer does not offer, and the installer asked for a MySQL/MariaDB server. The three containers now also share one `APP_KEY`, kept in the storage volume: before, each generated its own, so queued jobs could not decrypt stored secrets and every rebuild changed the key.
 - Docker: behind a reverse proxy the page loaded its scripts over http and the browser blocked them, leaving a blank page (#261).
 - Docker: the development stack's worker and scheduler were always reported unhealthy, and the production image's health check failed whenever `SERVER_NAME` was changed (#261).
 - Docker: the production compose file forced Secure session cookies, so every form answered 419 when the app was opened over plain http. The cookie now follows the request scheme (#261).
