@@ -130,6 +130,10 @@
         "already": "Already in Shopify",
         "partial": "Partly in Shopify",
         "no_sku": "Without SKU",
-        "failed": "Failed"
+        "failed": "Failed",
+        "extended": "Products completed",
+        "variants_added": "Variants added",
+        "generated_skus": "SKUs created (SHOPIFY-…)",
+        "generated_hint": "Shopify variants without a SKU are imported as SHOPIFY-<variant id>, so orders and stock still match them."
     }
 }

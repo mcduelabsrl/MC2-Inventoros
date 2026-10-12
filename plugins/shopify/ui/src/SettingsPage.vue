@@ -342,6 +342,7 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                         <div>
                             <h4 class="shp-subtitle">{{ t('catalogue.import_title') }}</h4>
                             <p class="shp-hint">{{ t('catalogue.import_hint') }}</p>
+                            <p class="shp-hint">{{ t('catalogue.generated_hint') }}</p>
                             <label class="shp-check shp-gap">
                                 <input v-model="catalogueImport.with_stock" type="checkbox" />
                                 <span class="shp-label">{{ t('catalogue.with_stock') }}</span>
@@ -352,7 +353,7 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                             <template v-if="importSummary">
                                 <p class="shp-hint shp-gap">{{ t('catalogue.last_run', { date: formatDate(importSummary.finished_at) }) }}</p>
                                 <dl class="shp-stats shp-stats-compact">
-                                    <div v-for="key in ['products', 'variants', 'existing', 'no_sku', 'failed']" :key="key">
+                                    <div v-for="key in ['products', 'variants', 'extended', 'variants_added', 'generated_skus', 'existing', 'failed']" :key="key">
                                         <dt>{{ t(`catalogue.${key}`) }}</dt>
                                         <dd>{{ importSummary[key] ?? 0 }}</dd>
                                     </div>

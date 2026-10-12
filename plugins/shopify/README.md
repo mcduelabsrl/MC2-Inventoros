@@ -19,6 +19,8 @@ Connects one Shopify store to each Inventoros organization.
 
 Products are matched by **SKU**: a Shopify variant's SKU must equal an Inventoros variant SKU, or the SKU of an Inventoros product sold without variants.
 
+**Variants without a SKU** are matched by their Shopify variant id instead. The catalogue import gives them the SKU `SHOPIFY-<variant id>` in Inventoros, and orders, stock and recovery recognise it. The same happens to a variant that shares its SKU with another Shopify variant already imported. An order line whose SKU no longer exists (changed after the order) is also matched through its variant, as long as that variant still exists in Shopify.
+
 ## Setting up
 
 ### 1. Create the app in Shopify
@@ -127,7 +129,8 @@ Both directions only create products that are missing on the other side. A produ
 - **Import from Shopify.**
   - A single-variant Shopify product becomes a simple Inventoros product with the variant's SKU.
   - A product with options becomes an Inventoros product with the same options and variants. Its own SKU is the Shopify handle in capitals.
-  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are left out. A product with more than 100 variants is reported, for you to create by hand.
+  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are imported as `SHOPIFY-<variant id>`. A product with more than 100 variants is reported, for you to create by hand.
+  - Importing again completes products imported earlier: their missing variants are added, with opening stock.
   - With "also import stock", Shopify's available quantities at the mapped locations are booked as opening stock, into a bin of each mapped warehouse. No stock is pushed back to Shopify during the import, since Shopify already has those figures.
 - **Publish to Shopify.**
   - Each active Inventoros product whose SKUs Shopify does not have is created in Shopify, as a draft or as active.

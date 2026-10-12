@@ -130,6 +130,10 @@
         "already": "Già su Shopify",
         "partial": "In parte su Shopify",
         "no_sku": "Senza SKU",
-        "failed": "Falliti"
+        "failed": "Falliti",
+        "extended": "Prodotti completati",
+        "variants_added": "Varianti aggiunte",
+        "generated_skus": "SKU creati (SHOPIFY-…)",
+        "generated_hint": "Le varianti Shopify senza SKU vengono importate come SHOPIFY-<id variante>, così ordini e giacenze le riconoscono lo stesso."
     }
 }

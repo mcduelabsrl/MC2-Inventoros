@@ -8,6 +8,7 @@ use App\Enums\Permission;
 use App\Models\Auth\Organization;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductLocation;
+use App\Models\Inventory\ProductOption;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Scopes\OrganizationScope;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 
 /**
  * Copies products between the Shopify catalogue and Inventoros, matched by
@@ -56,7 +58,13 @@ class CatalogueSync
         $existing = $this->inventorosSkus();
 
         $startedAt = now();
-        $summary = ['products' => 0, 'variants' => 0, 'with_stock' => $withStock, 'existing' => 0, 'existing_sample' => [], 'no_sku' => 0, 'no_sku_sample' => [], 'failed' => 0, 'failed_sample' => []];
+        $summary = [
+            'products' => 0, 'variants' => 0, 'with_stock' => $withStock,
+            'extended' => 0, 'variants_added' => 0, 'generated_skus' => 0,
+            'existing' => 0, 'existing_sample' => [],
+            'no_sku' => 0, 'no_sku_sample' => [],
+            'failed' => 0, 'failed_sample' => [],
+        ];
         $cache = [];
 
         PushGate::while(function () use ($member, $orgId, $currency, $withStock, &$existing, &$summary, &$cache) {
@@ -64,10 +72,6 @@ class CatalogueSync
                 ?: array_column((array) ($this->connection->locations ?? []), 'id');
 
             foreach ($this->client->products($withStock ? $locations : []) as $product) {
-                $variants = array_values(array_filter(
-                    (array) ($product['variants']['nodes'] ?? []),
-                    fn ($v) => is_array($v) && trim((string) ($v['sku'] ?? '')) !== '',
-                ));
                 $title = (string) ($product['title'] ?? 'Untitled');
 
                 if (! empty($product['_incomplete'])) {
@@ -77,6 +81,7 @@ class CatalogueSync
                     continue;
                 }
 
+                [$variants, $generated] = $this->resolveSkus((array) ($product['variants']['nodes'] ?? []), $existing);
                 if ($variants === []) {
                     $summary['no_sku']++;
                     self::sample($summary['no_sku_sample'], $title);
@@ -84,18 +89,39 @@ class CatalogueSync
                     continue;
                 }
 
-                $skus = array_map(fn ($v) => trim((string) $v['sku']), $variants);
-                if (array_intersect($skus, array_keys($existing)) !== [] || count(array_unique($skus)) !== count($skus)) {
-                    $summary['existing']++;
-                    self::sample($summary['existing_sample'], $title);
-
-                    continue;
-                }
+                $missing = array_values(array_filter($variants, fn ($v) => ! isset($existing[$v['sku']])));
+                $present = array_values(array_filter($variants, fn ($v) => isset($existing[$v['sku']])));
 
                 try {
-                    $created = $this->organizations()->runAs($member, $orgId, Permission::CREATE_PRODUCTS, fn (User $actor) => DB::transaction(
-                        fn () => $this->createInventorosProduct($product, $variants, $currency, $withStock, $actor),
-                    ));
+                    if ($missing === []) {
+                        $summary['existing']++;
+                        self::sample($summary['existing_sample'], $title);
+
+                        continue;
+                    }
+
+                    if ($present !== []) {
+                        // Imported before, without some variants (no SKU then):
+                        // add those to the same product.
+                        $owner = $this->ownerOf($present[0]['sku']);
+                        if ($owner === null || ! $owner->has_variants) {
+                            $summary['existing']++;
+                            self::sample($summary['existing_sample'], $title);
+
+                            continue;
+                        }
+                        $this->organizations()->runAs($member, $orgId, Permission::CREATE_PRODUCTS, fn (User $actor) => DB::transaction(
+                            fn () => $this->addVariants($owner, $missing, $withStock, $actor),
+                        ));
+                        $summary['extended']++;
+                        $summary['variants_added'] += count($missing);
+                    } else {
+                        $created = $this->organizations()->runAs($member, $orgId, Permission::CREATE_PRODUCTS, fn (User $actor) => DB::transaction(
+                            fn () => $this->createInventorosProduct($product, $variants, $currency, $withStock, $actor),
+                        ));
+                        $summary['products']++;
+                        $summary['variants'] += $created;
+                    }
                 } catch (\Throwable $e) {
                     $summary['failed']++;
                     self::sample($summary['failed_sample'], $title.': '.$e->getMessage());
@@ -104,13 +130,11 @@ class CatalogueSync
                     continue;
                 }
 
-                $summary['products']++;
-                $summary['variants'] += $created;
-                foreach ($variants as $variant) {
-                    $sku = trim((string) $variant['sku']);
-                    $existing[$sku] = true;
-                    $cache[$sku] = [
-                        'sku' => $sku,
+                $summary['generated_skus'] += count(array_filter($missing, fn ($v) => in_array($v['sku'], $generated, true)));
+                foreach ($missing as $variant) {
+                    $existing[$variant['sku']] = true;
+                    $cache[$variant['sku']] = [
+                        'sku' => $variant['sku'],
                         'variant_id' => (string) $variant['id'],
                         'inventory_item_id' => (string) ($variant['inventoryItem']['id'] ?? ''),
                         'tracked' => (bool) ($variant['inventoryItem']['tracked'] ?? true),
@@ -127,7 +151,7 @@ class CatalogueSync
         // The opening stock just booked already counts every order placed in
         // Shopify until now: orders imported later from before this moment
         // (by recovery) are history and must not take that stock again.
-        if ($withStock && $summary['products'] > 0
+        if ($withStock && ($summary['products'] > 0 || $summary['variants_added'] > 0)
             && ($this->connection->orders_since === null || $startedAt->gt($this->connection->orders_since))) {
             $this->connection->orders_since = $startedAt;
         }
@@ -146,10 +170,7 @@ class CatalogueSync
         $status = strtoupper($status) === 'ACTIVE' ? 'ACTIVE' : 'DRAFT';
 
         // What Shopify already has, refreshed.
-        $shopify = [];
-        foreach ($this->client->allVariants() as $variant) {
-            $shopify[$variant['sku']] ??= $variant;
-        }
+        $shopify = InventorySync::shopifyVariants($this->client);
         $sync = new InventorySync($this->connection, $this->client);
         $sync->cache($shopify);
 
@@ -192,7 +213,8 @@ class CatalogueSync
             return;
         }
 
-        $present = array_intersect($skus, array_keys($shopify));
+        // A SHOPIFY-<id> SKU stands for a Shopify variant: never published again.
+        $present = array_filter($skus, fn (string $sku) => isset($shopify[$sku]) || ShopifyClient::isGeneratedSku($sku));
         if (count($present) === count($skus)) {
             $summary['already']++;
 
@@ -342,6 +364,118 @@ class CatalogueSync
         }
 
         return count($variants);
+    }
+
+    /**
+     * The SKU each Shopify variant goes by in Inventoros: its own; or
+     * SHOPIFY-<variant id> when it has none, when another variant of the same
+     * product has the same one, or when a different Shopify variant was
+     * already imported under it. Variants without an inventory item are
+     * left out.
+     *
+     * @param  array<int, mixed>  $nodes
+     * @param  array<string, true>  $existing  SKUs Inventoros uses
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, string>} variants with `sku` set, and the generated SKUs
+     */
+    private function resolveSkus(array $nodes, array $existing): array
+    {
+        $variants = [];
+        $generated = [];
+        $seen = [];
+
+        foreach ($nodes as $node) {
+            if (! is_array($node) || empty($node['id']) || empty($node['inventoryItem']['id'])) {
+                continue;
+            }
+
+            $real = trim((string) ($node['sku'] ?? ''));
+            $sku = $real;
+            if ($real === '' || isset($seen[$real]) || (isset($existing[$real]) && $this->importedForAnotherVariant($real, (string) $node['id']))) {
+                $sku = ShopifyClient::generatedSku((string) $node['id']);
+                $generated[] = $sku;
+            }
+
+            $seen[$sku] = true;
+            $node['sku'] = $sku;
+            $variants[] = $node;
+        }
+
+        return [$variants, $generated];
+    }
+
+    /**
+     * Whether $sku was imported for a different Shopify variant than $variantId.
+     */
+    private function importedForAnotherVariant(string $sku, string $variantId): bool
+    {
+        $owner = ShopifyInventoryItem::query()
+            ->where('organization_id', $this->connection->organization_id)
+            ->where('sku', $sku)
+            ->value('variant_id');
+
+        return $owner !== null && $owner !== $variantId;
+    }
+
+    /**
+     * The Inventoros product a SKU belongs to (a variant's parent, or a simple product).
+     */
+    private function ownerOf(string $sku): ?Product
+    {
+        $orgId = $this->connection->organization_id;
+        $productId = ProductVariant::withoutGlobalScope(OrganizationScope::class)->where('organization_id', $orgId)->where('sku', $sku)->value('product_id')
+            ?? Product::withoutGlobalScope(OrganizationScope::class)->where('organization_id', $orgId)->where('sku', $sku)->value('id');
+
+        return $productId === null ? null : Product::withoutGlobalScope(OrganizationScope::class)->find($productId);
+    }
+
+    /**
+     * Add Shopify variants to an Inventoros product sold by variant, keeping
+     * its options' value lists complete.
+     *
+     * @param  array<int, array<string, mixed>>  $variants  with `sku` resolved
+     */
+    private function addVariants(Product $product, array $variants, bool $withStock, User $actor): void
+    {
+        $options = ProductOption::query()->where('product_id', $product->id)->get()->keyBy('name');
+        $position = (int) ProductVariant::withoutGlobalScope(OrganizationScope::class)->where('product_id', $product->id)->max('position');
+
+        foreach ($variants as $variant) {
+            $values = collect((array) ($variant['selectedOptions'] ?? []))
+                ->mapWithKeys(fn ($o) => [(string) $o['name'] => (string) $o['value']])
+                ->reject(fn ($value, $name) => $name === 'Title' && $value === 'Default Title')
+                ->all();
+
+            foreach ($values as $name => $value) {
+                $option = $options->get($name) ?? tap(ProductOption::query()->create([
+                    'product_id' => $product->id,
+                    'name' => $name,
+                    'values' => [],
+                    'position' => $options->count(),
+                ]), fn ($o) => $options->put($name, $o));
+                if (! in_array($value, (array) $option->values, true)) {
+                    $option->update(['values' => [...(array) $option->values, $value]]);
+                }
+            }
+
+            $local = ProductVariant::query()->create([
+                'product_id' => $product->id,
+                'organization_id' => $product->organization_id,
+                'sku' => $variant['sku'],
+                'barcode' => ($variant['barcode'] ?? null) ?: null,
+                'title' => implode(' / ', $values) ?: (string) ($variant['sku']),
+                'option_values' => $values,
+                'price' => Money::of($variant['price'] ?? 0),
+                'purchase_price' => isset($variant['inventoryItem']['unitCost']['amount']) ? Money::of($variant['inventoryItem']['unitCost']['amount']) : null,
+                'stock' => 0,
+                'min_stock' => 0,
+                'is_active' => true,
+                'position' => ++$position,
+            ]);
+
+            if ($withStock) {
+                $this->bookOpeningStock($product, $local, $variant, $actor);
+            }
+        }
     }
 
     /**
