@@ -144,6 +144,16 @@ class OrderImporter
             return $record;
         }
 
+        if (! empty($payload['_incomplete'])) {
+            // Too many lines to read back in one go: comparing a partial copy
+            // would drop lines. Webhooks carry the whole order.
+            if ($record->wasRecentlyCreated) {
+                return $this->finish($record, ShopifyOrder::FAILED, 'This order has more lines than can be read back from Shopify at once, so it could not be imported automatically. Enter it by hand.');
+            }
+
+            return $record;
+        }
+
         $notes = [];
 
         if ($record->order_id === null || $record->isRetryable()) {

@@ -29,12 +29,13 @@ Shopify no longer lets you create custom apps in the store admin. Create one in 
 2. Under **Versions**, create a version and paste this list into its **Scopes** field, exactly as written (comma-separated, no spaces):
 
    ```text
-   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders
+   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders
    ```
 
    - **Required:** the first five, for orders, stock and locations.
    - **Optional**, one feature each:
      - `write_products` publishes Inventoros products to Shopify;
+     - `read_markets_home` imports the catalogue (Shopify needs it to read variant prices);
      - the two `fulfillment_orders` scopes let an order ship from the warehouse of its assigned location, when several locations are mapped.
 
    Then **release** the version. The Dev Dashboard's scope picker shows friendlier names, so typing the list is the reliable way. If Shopify asks to approve new scopes in the store admin, approve them.
@@ -90,6 +91,7 @@ Each order webhook carries the whole order. The plugin compares that order with 
 - **Every ten minutes**, Inventoros reads back from Shopify the orders that changed since the last run, and applies them as if their webhooks had arrived.
   - It only imports orders created after the store was connected, so connecting never pulls in old orders.
   - It also registers again any order webhook Shopify removed. Shopify removes a subscription after its deliveries fail for about four hours.
+- An order with more than 50 lines (or a refund or fulfilment with more than 50) cannot be read back in one go. Recovery leaves it for you to enter by hand, rather than import it partly. Webhooks carry whole orders and are not limited.
 - **Recover orders** on the Shopify page imports the missing orders created since a date you choose, within the 60 days of orders Shopify gives apps.
 
 ### Stock
@@ -117,7 +119,7 @@ Both directions only create products that are missing on the other side. A produ
 - **Import from Shopify.**
   - A single-variant Shopify product becomes a simple Inventoros product with the variant's SKU.
   - A product with options becomes an Inventoros product with the same options and variants. Its own SKU is the Shopify handle in capitals.
-  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are left out.
+  - Prices, barcodes, unit costs and descriptions come along. Variants without a SKU are left out. A product with more than 100 variants is reported, for you to create by hand.
   - With "also import stock", Shopify's available quantities at the mapped locations are booked as opening stock, into a bin of each mapped warehouse. No stock is pushed back to Shopify during the import, since Shopify already has those figures.
 - **Publish to Shopify.**
   - Each active Inventoros product whose SKUs Shopify does not have is created in Shopify, as a draft or as active.

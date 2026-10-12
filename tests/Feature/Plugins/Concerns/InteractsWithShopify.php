@@ -178,9 +178,10 @@ trait InteractsWithShopify
      * @param  array<int, array<string, mixed>>  $products  GraphQL product nodes
      * @param  array<int, array{topic: string, uri: string}>  $webhooks  existing subscriptions
      */
-    protected function fakeShopify(array $variants = [], array $locations = [], bool $notStockedOnce = false, array $orders = [], array $assigned = [], array $products = [], array $webhooks = [], ?array $scopes = null, bool $denyOnce = false): void
+    protected function fakeShopify(array $variants = [], array $locations = [], bool $notStockedOnce = false, array $orders = [], array $assigned = [], array $products = [], array $webhooks = [], ?array $scopes = null, bool $denyOnce = false, ?int $maxFirst = null): void
     {
         $this->shopify = [
+            'max_first' => $maxFirst,
             'scopes' => $scopes ?? [...ShopifyClient::REQUIRED_SCOPES, ...ShopifyClient::OPTIONAL_SCOPES],
             'deny_once' => $denyOnce,
             'nodes' => array_map(fn ($v) => [
@@ -211,6 +212,13 @@ trait InteractsWithShopify
             $query = (string) $request['query'];
             $variables = $request['variables'] ?? [];
             $this->graphqlCalls[] = ['query' => $query, 'variables' => $variables];
+
+            // Shopify's 1000-point limit: pages larger than max_first cost too much.
+            if ($this->shopify['max_first'] !== null && ($variables['first'] ?? 0) > $this->shopify['max_first']) {
+                $cost = 400 * $variables['first'];
+
+                return Http::response(['errors' => [['message' => "Query cost is {$cost}, which exceeds the single query max cost limit (1000).", 'extensions' => ['code' => 'MAX_COST_EXCEEDED', 'cost' => $cost, 'maxCost' => 1000]]]]);
+            }
 
             if ($this->shopify['deny_once'] && ! str_contains($query, 'GrantedScopes')) {
                 $this->shopify['deny_once'] = false;

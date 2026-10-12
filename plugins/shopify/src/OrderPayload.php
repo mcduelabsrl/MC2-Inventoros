@@ -13,7 +13,8 @@ namespace Inventoros\Plugins\Shopify;
  * the importer reads one format: id, name, email, note, currency,
  * financial_status, created_at, processed_at, updated_at, cancelled_at,
  * shipping_address, billing_address, line_items, shipping_lines, refunds and
- * fulfillments, with the REST field names.
+ * fulfillments, with the REST field names. `_incomplete` marks an order
+ * whose lines did not fit in one GraphQL page.
  */
 final class OrderPayload
 {
@@ -31,7 +32,19 @@ final class OrderPayload
     {
         $money = fn ($set) => (string) ($set['shopMoney']['amount'] ?? '0');
 
+        // A list longer than one page was cut short: the order cannot be
+        // compared line by line from this copy.
+        $more = fn ($connection) => (bool) ($connection['pageInfo']['hasNextPage'] ?? false);
+        $incomplete = $more($node['lineItems'] ?? null);
+        foreach ((array) ($node['refunds'] ?? []) as $refund) {
+            $incomplete = $incomplete || $more($refund['refundLineItems'] ?? null);
+        }
+        foreach ((array) ($node['fulfillments'] ?? []) as $fulfillment) {
+            $incomplete = $incomplete || $more($fulfillment['fulfillmentLineItems'] ?? null);
+        }
+
         return [
+            '_incomplete' => $incomplete,
             'id' => (string) ($node['legacyResourceId'] ?? ShopifyClient::legacyId($node['id'] ?? '')),
             'name' => $node['name'] ?? null,
             'email' => $node['email'] ?? null,
