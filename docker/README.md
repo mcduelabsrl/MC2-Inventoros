@@ -85,7 +85,7 @@ services:
 
 ## Plugins
 
-Plugin code is baked into the image. After activating or deactivating a plugin, restart the long-running containers so they load it: `docker compose restart worker scheduler`.
+Plugin code is baked into the image. The queue worker loads plugins when it starts, so after activating or deactivating a plugin it must restart to pick the change up. The Shopify plugin asks it to do so itself (`queue:restart`). For other plugins, run `docker compose restart worker`.
 
 ## Common tasks
 

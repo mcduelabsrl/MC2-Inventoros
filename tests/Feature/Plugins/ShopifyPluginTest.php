@@ -7,8 +7,10 @@ namespace Tests\Feature\Plugins;
 use App\Models\Auth\Organization;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Order\Order;
+use App\Services\PluginService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Inventoros\Plugins\Shopify\Http\SettingsController;
@@ -58,6 +60,18 @@ final class ShopifyPluginTest extends TestCase
         $this->assertTrue(Route::has('plg.shopify.webhooks.receive'));
 
         $this->assertTrue($this->admin->hasPermission('shopify.manage'));
+    }
+
+    public function test_activating_and_deactivating_restart_the_queue_workers(): void
+    {
+        // queue:restart stores a timestamp that running workers compare against.
+        Cache::forget('illuminate:queue:restart');
+        do_action('plugin_activated_shopify');
+        $this->assertNotNull(Cache::get('illuminate:queue:restart'), 'activation asks the workers to restart');
+
+        Cache::forget('illuminate:queue:restart');
+        app(PluginService::class)->deactivatePlugin('shopify');
+        $this->assertNotNull(Cache::get('illuminate:queue:restart'), 'deactivation asks the workers to restart');
     }
 
     // ------------------------------------------------------------------
