@@ -107,7 +107,7 @@
         "ignored": "Precedenti alla finestra di importazione",
         "webhooks_repaired": "Webhook registrati di nuovo: {topics}",
         "from": "Importa gli ordini mancanti creati dal",
-        "from_hint": "Shopify rende disponibili alle app gli ordini degli ultimi 60 giorni.",
+        "from_hint": "Shopify rende disponibili alle app gli ordini degli ultimi 60 giorni. Gli ordini precedenti al momento in cui Inventoros ha preso lo stock da Shopify vengono importati come storico: con le spedizioni, senza modificare le giacenze.",
         "run": "Recupera ordini"
     },
     "catalogue": {

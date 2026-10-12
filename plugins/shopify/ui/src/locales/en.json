@@ -107,7 +107,7 @@
         "ignored": "Older than the import window",
         "webhooks_repaired": "Webhooks registered again: {topics}",
         "from": "Import missing orders created since",
-        "from_hint": "Shopify keeps the last 60 days of orders available to apps.",
+        "from_hint": "Shopify gives apps the last 60 days of orders. Orders placed before Inventoros took its stock from Shopify are imported as history: with their shipments, without changing stock.",
         "run": "Recover orders"
     },
     "catalogue": {

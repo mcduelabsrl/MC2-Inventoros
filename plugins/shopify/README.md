@@ -92,6 +92,10 @@ Each order webhook carries the whole order. The plugin compares that order with 
   - It only imports orders created after the store was connected, so connecting never pulls in old orders.
   - It also registers again any order webhook Shopify removed. Shopify removes a subscription after its deliveries fail for about four hours.
 - An order with more than 50 lines (or a refund or fulfilment with more than 50) cannot be read back in one go. Recovery leaves it for you to enter by hand, rather than import it partly. Webhooks carry whole orders and are not limited.
+- **Orders already in Shopify** are not imported when you connect. To bring them in, use **Recover orders** with a start date.
+  - Orders placed before Inventoros took its stock from Shopify are imported **as history**: with their lines, shipments and status, but without taking stock (and without announcing a new sale to webhooks and other plugins).
+  - Inventoros takes its stock from Shopify when you connect, or when you import the catalogue with stock.
+  - Refunds from that time do not create returns either, because their restock is already in those figures.
 - **Recover orders** on the Shopify page imports the missing orders created since a date you choose, within the 60 days of orders Shopify gives apps.
 
 ### Stock
