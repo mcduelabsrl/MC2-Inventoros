@@ -83,6 +83,10 @@ Each order webhook carries the whole order. The plugin compares that order with 
 - **Refunds.**
   - A refund that **restocks returned items** becomes an Inventoros return, which is approved, received into stock and completed.
   - A refund that does not restock changes nothing in stock.
+- **Payments.** What Shopify received is recorded as a payment on the order (method "other", reference "Shopify #1001"), so the payment status matches Shopify's:
+  - a paid order is settled at its Inventoros total;
+  - a partly paid order is paid up to what Shopify received;
+  - money refunded in Shopify is recorded as a refund on the order.
 - **Cancellation.** Cancelling in Shopify cancels the Inventoros order and returns its stock, unless goods have already shipped. A cancellation that arrives before the order itself stops the order from being imported.
 - **Repeats and stale data.** Each order, fulfilment and refund is applied once, however often Shopify sends it. A webhook older than the state already applied is ignored.
 
@@ -96,7 +100,7 @@ Each order webhook carries the whole order. The plugin compares that order with 
   - Orders placed before Inventoros took its stock from Shopify are imported **as history**: with their lines, shipments and status, but without taking stock (and without announcing a new sale to webhooks and other plugins).
   - Inventoros takes its stock from Shopify when you connect, or when you import the catalogue with stock.
   - Refunds from that time do not create returns either, because their restock is already in those figures.
-- **Recover orders** on the Shopify page imports the missing orders created since a date you choose, within the 60 days of orders Shopify gives apps.
+- **Recover orders** on the Shopify page imports the missing orders created since a date you choose, within the 60 days of orders Shopify gives apps (or any date, with the optional `read_all_orders` scope).
 
 ### Stock
 

@@ -67,6 +67,7 @@ class SettingsController
             ],
             'webhookUrl' => $connection === null ? null : self::webhookUrl($connection),
             'defaultApiVersion' => ShopifyConnection::DEFAULT_API_VERSION,
+            'allOrders' => $connection !== null && ! in_array('read_all_orders', (array) ($connection->missing_scopes ?? ['read_all_orders']), true),
             'requiredScopes' => ShopifyClient::REQUIRED_SCOPES,
             'optionalScopes' => ShopifyClient::OPTIONAL_SCOPES,
             'warehouses' => Warehouse::query()
@@ -248,7 +249,13 @@ class SettingsController
     public function recover(Request $request): RedirectResponse
     {
         $connection = $this->connection($request);
-        $validated = $request->validate(['from' => ['required', 'date', 'before_or_equal:now', 'after:'.now()->subDays(60)->toDateString()]]);
+        // Shopify shows apps the last 60 days of orders, all of them with read_all_orders.
+        $allOrders = ! in_array('read_all_orders', (array) ($connection->missing_scopes ?? ['read_all_orders']), true);
+        $rules = ['required', 'date', 'before_or_equal:now'];
+        if (! $allOrders) {
+            $rules[] = 'after:'.now()->subDays(60)->toDateString();
+        }
+        $validated = $request->validate(['from' => $rules], ['from.after' => 'Shopify only gives apps the last 60 days of orders. Grant the app read_all_orders to go further back.']);
 
         RecoverOrders::dispatch($connection->organization_id, Carbon::parse($validated['from'])->startOfDay()->toIso8601String());
 

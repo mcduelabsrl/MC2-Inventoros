@@ -17,6 +17,7 @@ const props = defineProps({
     defaultApiVersion: { type: String, required: true },
     requiredScopes: { type: Array, default: () => [] },
     optionalScopes: { type: Array, default: () => [] },
+    allOrders: { type: Boolean, default: false },
     warehouses: { type: Array, default: () => [] },
     orders: { type: Array, default: () => [] },
 });
@@ -324,8 +325,8 @@ const statusVariant = (status) => ({ imported: 'success', failed: 'danger', skip
                     <form class="shp-inline" @submit.prevent="recovery.post(`${actions}/recover`, { preserveScroll: true })">
                         <label class="shp-field">
                             <span class="shp-label">{{ t('recovery.from') }}</span>
-                            <input v-model="recovery.from" class="shp-input shp-input-short" type="date" :min="minRecoveryDate" :max="today" required />
-                            <span class="shp-hint">{{ t('recovery.from_hint') }}</span>
+                            <input v-model="recovery.from" class="shp-input shp-input-short" type="date" :min="allOrders ? null : minRecoveryDate" :max="today" required />
+                            <span class="shp-hint">{{ t(allOrders ? 'recovery.from_hint_all' : 'recovery.from_hint') }}</span>
                             <span v-if="recovery.errors.from" class="shp-error">{{ recovery.errors.from }}</span>
                         </label>
                         <Button type="submit" size="sm" :disabled="!connection.connected || !connection.import_orders" :loading="recovery.processing">
