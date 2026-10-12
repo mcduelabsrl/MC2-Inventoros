@@ -31,6 +31,8 @@ class OrderResource extends JsonResource
             'invoice_queued_at' => $this->invoice_queued_at?->toIso8601String(),
             'source' => $this->source,
             'external_id' => $this->external_id,
+            // The order's number in its sales channel (Shopify's #1001).
+            'external_reference' => $this->external_reference,
             'customer_id' => $this->customer_id,
             'customer_name' => $this->customer_name,
             'customer_email' => $this->customer_email,

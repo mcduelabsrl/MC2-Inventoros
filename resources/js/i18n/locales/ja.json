@@ -563,6 +563,7 @@
     "searchOrders": "注文を検索",
     "searchPlaceholder": "注文番号、顧客名、またはメールで検索...",
     "source": "ソース",
+    "externalReference": "チャネル側の番号",
     "allSources": "すべてのソース",
     "orderCol": "注文",
     "customer": "顧客",

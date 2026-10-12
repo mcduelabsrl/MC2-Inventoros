@@ -563,6 +563,7 @@
     "searchOrders": "Bestellingen zoeken",
     "searchPlaceholder": "Zoeken op bestelnummer, klantnaam of e-mail...",
     "source": "Bron",
+    "externalReference": "Kanaalreferentie",
     "allSources": "Alle bronnen",
     "orderCol": "Bestelling",
     "customer": "Klant",

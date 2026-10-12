@@ -185,7 +185,10 @@ const selectClass =
         <div class="mt-4">
             <DataTable :columns="columns" :rows="orders.data" dense>
                 <template #cell-order_number="{ row }">
-                    <Link :href="route('orders.show', row.id)" class="font-mono text-xs font-medium text-text-primary hover:text-brand">{{ row.order_number }}</Link>
+                    <div class="flex flex-col">
+                        <Link :href="route('orders.show', row.id)" class="font-mono text-xs font-medium text-text-primary hover:text-brand">{{ row.order_number }}</Link>
+                        <span v-if="row.external_reference" class="text-xs font-medium text-text-secondary" :title="t('orders.externalReference')">{{ sourceText(row.source) }} {{ row.external_reference }}</span>
+                    </div>
                 </template>
                 <template #cell-customer_name="{ row }">
                     <div class="flex flex-col">

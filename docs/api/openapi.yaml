@@ -2212,6 +2212,7 @@ components:
         order_number: { type: string }
         source: { type: string, nullable: true }
         external_id: { type: string, nullable: true }
+        external_reference: { type: string, nullable: true, description: "The order's number in its sales channel, such as Shopify's #1001." }
         customer_name: { type: string }
         customer_email: { type: string, format: email, nullable: true }
         customer_address: { type: string, nullable: true }
