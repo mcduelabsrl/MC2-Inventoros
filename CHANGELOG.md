@@ -9,6 +9,7 @@ Full release notes, with the pull request behind each change, are on [GitHub Rel
 ### Added
 
 - `TRUSTED_PROXIES` names the reverse proxies (nginx, Traefik, Caddy, a load balancer) whose `X-Forwarded-*` headers are believed, so the app builds https URLs and Secure cookies behind a TLS-terminating proxy. No proxy is trusted unless configured; the Docker image and compose files default to `private_ranges`.
+- A bundled Shopify plugin (`plugins/shopify`): Shopify orders are imported as Inventoros orders through order webhooks, cancellations return the stock, and every stock change is pushed to one Shopify location as the available quantity, matched by SKU. Setup is in `plugins/shopify/README.md`.
 - Order and purchase order forms have an optional tax rate (%) beside the tax amount, which fills the amount in from the subtotal after discounts. Only the amount is saved, as before.
 
 ### Fixed

@@ -1,0 +1,90 @@
+{
+    "nav": { "title": "Shopify" },
+    "permissions": {
+        "manage": {
+            "label": "Manage Shopify",
+            "description": "Connect a Shopify store, change its sync settings and retry order imports"
+        }
+    },
+    "card": {
+        "title": "Shopify",
+        "description": "Import Shopify orders and push stock to your store."
+    },
+    "page": {
+        "title": "Shopify",
+        "description": "Shopify orders become Inventoros orders, and Inventoros stock is published to Shopify. Products are matched by SKU.",
+        "crumb": "Integrations"
+    },
+    "status": {
+        "connected": "Connected to {shop}",
+        "not_connected": "Not connected",
+        "error": "Last error",
+        "acting_user": "Orders and stock changes are recorded as {name}."
+    },
+    "connection": {
+        "title": "Connection",
+        "subtitle": "The Shopify app's credentials, from the Dev Dashboard (App settings).",
+        "shop_domain": "Store address",
+        "shop_domain_hint": "For example my-store.myshopify.com",
+        "client_id": "Client ID",
+        "client_secret": "Client secret",
+        "client_secret_saved": "Saved. Leave empty to keep it.",
+        "api_version": "API version",
+        "scopes": "The app needs these scopes: {scopes}.",
+        "save": "Save and test connection",
+        "disconnect": "Disconnect",
+        "disconnect_confirm": "Disconnect Shopify? Orders already imported stay; the stored credentials are deleted."
+    },
+    "sync": {
+        "title": "Sync settings",
+        "import_orders": "Import Shopify orders",
+        "import_orders_hint": "New Shopify orders become Inventoros orders and take stock out; cancelling in Shopify cancels them here.",
+        "push_inventory": "Push stock to Shopify",
+        "push_inventory_hint": "Every stock change in Inventoros sets the available quantity in Shopify. Inventoros is the source of truth.",
+        "location": "Shopify location",
+        "location_none": "Choose a location",
+        "location_hint": "Save the connection first to load the store's locations.",
+        "warehouse": "Inventoros warehouse for Shopify orders",
+        "warehouse_default": "Default warehouse"
+    },
+    "webhooks": {
+        "title": "Order webhooks",
+        "subtitle": "Shopify notifies Inventoros of new and cancelled orders at this address. It must be public and HTTPS.",
+        "register": "Register webhooks in Shopify",
+        "registered": "Registered {date}",
+        "not_registered": "Not registered yet",
+        "copy": "Copy",
+        "copied": "Copied"
+    },
+    "stock": {
+        "title": "Stock sync",
+        "subtitle": "Match every Shopify variant to Inventoros by SKU and push all quantities. Run it once after connecting, and whenever SKUs change in bulk.",
+        "run": "Sync all stock now",
+        "never": "Never run",
+        "last_run": "Last run {date}",
+        "shopify_skus": "Shopify SKUs",
+        "inventoros_skus": "Inventoros SKUs",
+        "matched": "Matched",
+        "pushed": "Pushed",
+        "failed": "Failed",
+        "untracked": "Not tracked in Shopify",
+        "only_in_shopify": "Only in Shopify",
+        "only_in_inventoros": "Only in Inventoros",
+        "sample": "First {count}:"
+    },
+    "orders": {
+        "title": "Recent Shopify orders",
+        "empty": "No Shopify orders received yet.",
+        "shopify_order": "Shopify order",
+        "status": "Status",
+        "result": "Result",
+        "inventoros_order": "Inventoros order",
+        "retry": "Retry",
+        "statuses": {
+            "imported": "Imported",
+            "failed": "Failed",
+            "skipped": "Skipped",
+            "cancelled": "Cancelled"
+        }
+    }
+}

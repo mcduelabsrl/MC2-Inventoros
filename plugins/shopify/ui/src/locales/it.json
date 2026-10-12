@@ -1,0 +1,90 @@
+{
+    "nav": { "title": "Shopify" },
+    "permissions": {
+        "manage": {
+            "label": "Gestire Shopify",
+            "description": "Collegare un negozio Shopify, modificarne le impostazioni di sincronizzazione e ritentare l'importazione degli ordini"
+        }
+    },
+    "card": {
+        "title": "Shopify",
+        "description": "Importa gli ordini Shopify e pubblica le giacenze nel negozio."
+    },
+    "page": {
+        "title": "Shopify",
+        "description": "Gli ordini Shopify diventano ordini Inventoros e le giacenze di Inventoros vengono pubblicate su Shopify. I prodotti sono abbinati per SKU.",
+        "crumb": "Integrazioni"
+    },
+    "status": {
+        "connected": "Collegato a {shop}",
+        "not_connected": "Non collegato",
+        "error": "Ultimo errore",
+        "acting_user": "Ordini e movimenti di stock sono registrati come {name}."
+    },
+    "connection": {
+        "title": "Connessione",
+        "subtitle": "Le credenziali dell'app Shopify, dal Dev Dashboard (App settings).",
+        "shop_domain": "Indirizzo del negozio",
+        "shop_domain_hint": "Per esempio mio-negozio.myshopify.com",
+        "client_id": "Client ID",
+        "client_secret": "Client secret",
+        "client_secret_saved": "Salvato. Lascia vuoto per mantenerlo.",
+        "api_version": "Versione API",
+        "scopes": "L'app richiede questi scope: {scopes}.",
+        "save": "Salva e prova la connessione",
+        "disconnect": "Scollega",
+        "disconnect_confirm": "Scollegare Shopify? Gli ordini già importati restano; le credenziali salvate vengono eliminate."
+    },
+    "sync": {
+        "title": "Impostazioni di sincronizzazione",
+        "import_orders": "Importa gli ordini Shopify",
+        "import_orders_hint": "I nuovi ordini Shopify diventano ordini Inventoros e scalano lo stock; annullarli in Shopify li annulla anche qui.",
+        "push_inventory": "Pubblica le giacenze su Shopify",
+        "push_inventory_hint": "Ogni movimento di stock in Inventoros imposta la quantità disponibile su Shopify. Inventoros è la fonte di verità.",
+        "location": "Sede Shopify",
+        "location_none": "Scegli una sede",
+        "location_hint": "Salva prima la connessione per caricare le sedi del negozio.",
+        "warehouse": "Magazzino Inventoros per gli ordini Shopify",
+        "warehouse_default": "Magazzino predefinito"
+    },
+    "webhooks": {
+        "title": "Webhook degli ordini",
+        "subtitle": "Shopify avvisa Inventoros dei nuovi ordini e di quelli annullati a questo indirizzo. Deve essere pubblico e HTTPS.",
+        "register": "Registra i webhook su Shopify",
+        "registered": "Registrati il {date}",
+        "not_registered": "Non ancora registrati",
+        "copy": "Copia",
+        "copied": "Copiato"
+    },
+    "stock": {
+        "title": "Sincronizzazione giacenze",
+        "subtitle": "Abbina ogni variante Shopify a Inventoros tramite SKU e pubblica tutte le quantità. Eseguila una volta dopo il collegamento e ogni volta che cambi molti SKU.",
+        "run": "Sincronizza tutte le giacenze",
+        "never": "Mai eseguita",
+        "last_run": "Ultima esecuzione {date}",
+        "shopify_skus": "SKU su Shopify",
+        "inventoros_skus": "SKU su Inventoros",
+        "matched": "Abbinati",
+        "pushed": "Pubblicati",
+        "failed": "Falliti",
+        "untracked": "Non tracciati su Shopify",
+        "only_in_shopify": "Solo su Shopify",
+        "only_in_inventoros": "Solo su Inventoros",
+        "sample": "Primi {count}:"
+    },
+    "orders": {
+        "title": "Ordini Shopify recenti",
+        "empty": "Nessun ordine Shopify ricevuto finora.",
+        "shopify_order": "Ordine Shopify",
+        "status": "Stato",
+        "result": "Esito",
+        "inventoros_order": "Ordine Inventoros",
+        "retry": "Riprova",
+        "statuses": {
+            "imported": "Importato",
+            "failed": "Fallito",
+            "skipped": "Saltato",
+            "cancelled": "Annullato"
+        }
+    }
+}
