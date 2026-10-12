@@ -306,6 +306,41 @@ final class ShopifySyncTest extends TestCase
         $this->assertSame('2002', Order::query()->sole()->external_id);
     }
 
+    public function test_orders_placed_before_the_stock_was_taken_are_imported_as_history(): void
+    {
+        $product = $this->makeProduct($this->org, ['sku' => 'MUG', 'stock' => 10]);
+        $this->connect(['orders_since' => now()->subHour()]);
+        $old = $this->graphqlOrder(2004, now()->subDays(3), [['sku' => 'MUG', 'quantity' => 4, 'id' => 901]]);
+        $old['fulfillments'] = [[
+            'id' => 'gid://shopify/Fulfillment/5101',
+            'status' => 'SUCCESS',
+            'displayStatus' => 'DELIVERED',
+            'createdAt' => now()->subDays(2)->toIso8601String(),
+            'location' => null,
+            'trackingInfo' => [],
+            'fulfillmentLineItems' => ['nodes' => [['quantity' => 4, 'lineItem' => ['id' => 'gid://shopify/LineItem/901', 'sku' => 'MUG']]], 'pageInfo' => ['hasNextPage' => false]],
+        ]];
+        $old['refunds'] = [[
+            'id' => 'gid://shopify/Refund/7101',
+            'createdAt' => now()->subDays(1)->toIso8601String(),
+            'refundLineItems' => ['nodes' => [['quantity' => 1, 'restockType' => 'RETURN', 'lineItem' => ['id' => 'gid://shopify/LineItem/901', 'sku' => 'MUG']]], 'pageInfo' => ['hasNextPage' => false]],
+        ]];
+        $this->fakeShopify(orders: [$old]);
+
+        $this->actingAs($this->admin)
+            ->post(route('plg.shopify.recover'), ['from' => now()->subDays(7)->toDateString()])
+            ->assertSessionHas('success');
+
+        $order = Order::query()->sole();
+        $this->assertSame('2004', $order->external_id);
+        $this->assertFalse((bool) $order->stock_committed);
+        $this->assertSame(10, $product->fresh()->stock, 'the stock taken from Shopify already counts this order and its return');
+        $this->assertSame(ShipmentStatus::DELIVERED, Shipment::query()->sole()->status);
+        $this->assertSame(0, ReturnOrder::query()->count());
+        $this->assertSame('history', ShopifyLink::query()->where('kind', ShopifyLink::REFUND)->sole()->state);
+        $this->assertStringContainsString('Imported as history', ShopifyOrder::query()->sole()->message);
+    }
+
     public function test_recovery_applies_a_fulfilment_whose_webhook_was_missed(): void
     {
         [$connection, , $payload] = $this->importedOrder(quantity: 2);
@@ -395,6 +430,16 @@ final class ShopifySyncTest extends TestCase
 
         $summary = ShopifyConnection::forOrganization($this->org->id)->catalogue_import_summary;
         $this->assertSame([2, 3, 1, 1, 0], [$summary['products'], $summary['variants'], $summary['existing'], $summary['no_sku'], $summary['failed']]);
+    }
+
+    public function test_a_catalogue_import_with_stock_makes_earlier_orders_history(): void
+    {
+        $this->connect(['orders_since' => now()->subDays(2)]);
+        $this->fakeShopify(products: [$this->graphqlProduct(1, 'Candle', 'candle', [], [['sku' => 'CANDLE', 'price' => '12.00', 'available' => 7]])]);
+
+        $this->actingAs($this->admin)->post(route('plg.shopify.catalogue.import'), ['with_stock' => true]);
+
+        $this->assertTrue(ShopifyConnection::forOrganization($this->org->id)->orders_since->gt(now()->subMinute()));
     }
 
     public function test_pages_over_shopifys_cost_limit_are_asked_for_again_smaller(): void

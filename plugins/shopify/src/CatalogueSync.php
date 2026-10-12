@@ -55,6 +55,7 @@ class CatalogueSync
         $currency = Organization::currencyFor($orgId);
         $existing = $this->inventorosSkus();
 
+        $startedAt = now();
         $summary = ['products' => 0, 'variants' => 0, 'with_stock' => $withStock, 'existing' => 0, 'existing_sample' => [], 'no_sku' => 0, 'no_sku_sample' => [], 'failed' => 0, 'failed_sample' => []];
         $cache = [];
 
@@ -121,7 +122,16 @@ class CatalogueSync
         (new InventorySync($this->connection, $this->client))->cache(array_filter($cache, fn ($v) => $v['inventory_item_id'] !== ''), forgetOthers: false);
 
         $summary['finished_at'] = now()->toIso8601String();
-        $this->connection->forceFill(['catalogue_import_summary' => $summary])->save();
+        $this->connection->forceFill(['catalogue_import_summary' => $summary]);
+
+        // The opening stock just booked already counts every order placed in
+        // Shopify until now: orders imported later from before this moment
+        // (by recovery) are history and must not take that stock again.
+        if ($withStock && $summary['products'] > 0
+            && ($this->connection->orders_since === null || $startedAt->gt($this->connection->orders_since))) {
+            $this->connection->orders_since = $startedAt;
+        }
+        $this->connection->save();
 
         return $summary;
     }

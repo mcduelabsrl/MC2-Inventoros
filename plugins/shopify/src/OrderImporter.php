@@ -253,9 +253,19 @@ class OrderImporter
                         : 'No line item matches an Inventoros SKU: '.implode(', ', $unmatched).'.');
                 }
 
-                $order = $this->orders->create($this->orderData($connection, $payload, $items, $unmatched), $member, 'shopify');
+                // An order placed before Inventoros took its stock figures
+                // from Shopify (the connection, or a catalogue import with
+                // stock) is already counted in them: it is recorded as
+                // history, without taking stock or announcing a new sale.
+                $historical = $this->isHistory($connection, $payload['created_at'] ?? null);
+                $order = $this->orders->create($this->orderData($connection, $payload, $items, $unmatched), $member, 'shopify', adjustStock: ! $historical, announce: ! $historical);
 
-                return $this->finish($record, ShopifyOrder::IMPORTED, $unmatched === [] ? null : 'Imported without unmatched lines: '.implode(', ', $unmatched).'.', $order->id);
+                $notes = array_filter([
+                    $historical ? 'Imported as history: placed before Inventoros took its stock from Shopify, so stock was not changed.' : null,
+                    $unmatched === [] ? null : 'Imported without unmatched lines: '.implode(', ', $unmatched).'.',
+                ]);
+
+                return $this->finish($record, ShopifyOrder::IMPORTED, $notes === [] ? null : implode(' ', $notes), $order->id);
             });
         } catch (InsufficientStockException|InvalidOrderItemException|BusinessRuleException $e) {
             return $this->finish($record, ShopifyOrder::FAILED, $e->getMessage());
@@ -467,6 +477,13 @@ class OrderImporter
                 continue;
             }
 
+            if ($this->isHistory($connection, $refund['created_at'] ?? null)) {
+                // Its restock is already in the stock Inventoros took from Shopify.
+                ShopifyLink::query()->create($attributes + ['shopify_order_id' => (string) $payload['id'], 'state' => 'history']);
+
+                continue;
+            }
+
             $returned = array_values(array_filter(
                 (array) ($refund['refund_line_items'] ?? []),
                 fn ($item) => is_array($item) && in_array($item['restock_type'] ?? null, OrderPayload::RETURNED, true),
@@ -673,6 +690,17 @@ class OrderImporter
             ->first(['id']);
 
         return $product === null ? null : ['product_id' => (int) $product->id, 'product_variant_id' => null];
+    }
+
+    /**
+     * Whether something that happened at $time is already reflected in the
+     * stock Inventoros took from Shopify (before orders_since).
+     */
+    private function isHistory(ShopifyConnection $connection, mixed $time): bool
+    {
+        $at = self::time($time);
+
+        return $at !== null && $connection->orders_since !== null && $at->lt($connection->orders_since);
     }
 
     private static function targetKey(int $productId, ?int $variantId): string

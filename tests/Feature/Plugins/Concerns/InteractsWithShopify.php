@@ -132,7 +132,7 @@ trait InteractsWithShopify
             'email' => 'ada@example.com',
             'currency' => 'USD',
             'financial_status' => 'pending',
-            'created_at' => '2026-10-01T10:00:00+02:00',
+            'created_at' => now()->toIso8601String(),
             'cancelled_at' => null,
             'shipping_address' => [
                 'first_name' => 'Ada',

@@ -42,7 +42,7 @@ const mapping = reactive(Object.fromEntries((props.connection?.locations ?? []).
     return [location.id, entry ? (entry.warehouse_id ?? 'all') : ''];
 })));
 
-const recovery = useForm({ from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10) });
+const recovery = useForm({ from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) });
 const catalogueImport = useForm({ with_stock: true });
 const cataloguePublish = useForm({ status: 'draft' });
 
