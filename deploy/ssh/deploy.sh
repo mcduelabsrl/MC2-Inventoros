@@ -9,10 +9,11 @@
 #   --assets      also run `npm ci && npm run build` and sync public/build
 #   --no-backup   skip the database dump (not recommended)
 #
-# Environment:
-#   DEPLOY_HOST   SSH host or ~/.ssh/config alias        (default: siteground)
+# Settings, from the environment or from deploy/ssh/.env.deploy (not tracked
+# by git; copy deploy/ssh/.env.deploy.example). The environment wins.
+#   DEPLOY_HOST   SSH host or ~/.ssh/config alias          (required)
 #   DEPLOY_ROOT   folder holding inventoros/ and public_html/, relative to the
-#                 remote home                               (default: www/saxone.eu)
+#                 remote home                               (required)
 #   DEPLOY_PHP    PHP CLI binary on the server              (default: php)
 #
 # Never synced: .env, storage/, vendor/ (rebuilt on the server when composer.lock
@@ -21,8 +22,20 @@
 
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:-siteground}"
-ROOT="${DEPLOY_ROOT:-www/saxone.eu}"
+SETTINGS="$(git rev-parse --show-toplevel)/deploy/ssh/.env.deploy"
+if [ -f "$SETTINGS" ]; then
+    # Only DEPLOY_* assignments, and only where the environment has none.
+    while IFS='=' read -r key value; do
+        case "$key" in
+            DEPLOY_HOST|DEPLOY_ROOT|DEPLOY_PHP)
+                value="${value%\"}"; value="${value#\"}"
+                [ -n "${!key:-}" ] || printf -v "$key" '%s' "$value" ;;
+        esac
+    done < <(grep -E '^DEPLOY_[A-Z]+=' "$SETTINGS")
+fi
+
+HOST="${DEPLOY_HOST:-}"
+ROOT="${DEPLOY_ROOT:-}"
 PHP="${DEPLOY_PHP:-php}"
 APPLY=0
 ASSETS=0
@@ -33,12 +46,18 @@ for arg in "$@"; do
         --apply) APPLY=1 ;;
         --assets) ASSETS=1 ;;
         --no-backup) BACKUP=0 ;;
-        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
 done
 
 cd "$(git rev-parse --show-toplevel)"
+
+if [ -z "$HOST" ] || [ -z "$ROOT" ]; then
+    echo "Set DEPLOY_HOST and DEPLOY_ROOT, in the environment or in deploy/ssh/.env.deploy" >&2
+    echo "(copy deploy/ssh/.env.deploy.example)." >&2
+    exit 2
+fi
 
 APP="$ROOT/inventoros"
 WEB="$ROOT/public_html"
