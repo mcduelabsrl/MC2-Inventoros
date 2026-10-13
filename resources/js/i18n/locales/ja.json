@@ -487,6 +487,8 @@
       "descPlaceholder": "説明（任意）..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "ロケーションをクイック追加",
       "locationName": "ロケーション名",
       "namePlaceholder": "例: 倉庫A",
@@ -509,6 +511,7 @@
       "serial": "シリアル番号管理"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "商品の種類",
       "productTypeHint": "キットは販売用に構成部品をまとめたものです。組立品の製造には作業指示が必要です。",
       "additionalCurrencies": "追加の通貨",

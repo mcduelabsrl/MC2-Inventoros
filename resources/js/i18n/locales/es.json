@@ -487,6 +487,8 @@
       "descPlaceholder": "Descripci\u00f3n opcional..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Agregar ubicaci\u00f3n r\u00e1pida",
       "locationName": "Nombre de la ubicaci\u00f3n",
       "namePlaceholder": "Ej., Almac\u00e9n A",
@@ -509,6 +511,7 @@
       "serial": "Seguimiento por número de serie"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Tipo de producto",
       "productTypeHint": "Los kits agrupan componentes para la venta. Los ensamblajes requieren órdenes de trabajo para producirse.",
       "additionalCurrencies": "Monedas adicionales",

@@ -487,6 +487,8 @@
       "descPlaceholder": "Описание (необязательно)..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Быстрое добавление места хранения",
       "locationName": "Название места хранения",
       "namePlaceholder": "напр., Склад А",
@@ -509,6 +511,7 @@
       "serial": "Учёт серийных номеров"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Тип товара",
       "productTypeHint": "Комплекты объединяют компоненты для продажи. Сборки производятся по производственным заказам.",
       "additionalCurrencies": "Дополнительные валюты",

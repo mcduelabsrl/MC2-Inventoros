@@ -380,6 +380,8 @@
       "descPlaceholder": "Optional description..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Quick Add Location",
       "locationName": "Location Name",
       "namePlaceholder": "e.g., Warehouse A",
@@ -402,6 +404,7 @@
       "serial": "Serial Number Tracking"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Product Type",
       "productTypeHint": "Kits bundle components for sale. Assemblies require work orders to produce.",
       "additionalCurrencies": "Additional Currencies",

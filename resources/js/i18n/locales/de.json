@@ -487,6 +487,8 @@
       "descPlaceholder": "Optionale Beschreibung..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Lagerort schnell hinzufügen",
       "locationName": "Lagerortname",
       "namePlaceholder": "z. B. Lager A",
@@ -509,6 +511,7 @@
       "serial": "Seriennummernverfolgung"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Produkttyp",
       "productTypeHint": "Sets bündeln Komponenten zum Verkauf. Baugruppen werden über Arbeitsaufträge produziert.",
       "additionalCurrencies": "Weitere Währungen",

@@ -487,6 +487,8 @@
       "descPlaceholder": "Optionele beschrijving..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Snel locatie toevoegen",
       "locationName": "Locatienaam",
       "namePlaceholder": "bijv. Magazijn A",
@@ -509,6 +511,7 @@
       "serial": "Serienummerregistratie"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Producttype",
       "productTypeHint": "Kits bundelen componenten voor de verkoop. Assemblages vereisen werkorders om te produceren.",
       "additionalCurrencies": "Extra valuta's",

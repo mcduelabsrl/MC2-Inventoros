@@ -487,6 +487,8 @@
       "descPlaceholder": "Descrição opcional..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Adição Rápida de Localização",
       "locationName": "Nome da Localização",
       "namePlaceholder": "ex.: Depósito A",
@@ -509,6 +511,7 @@
       "serial": "Rastreamento de Números de Série"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Tipo de Produto",
       "productTypeHint": "Kits agrupam componentes para venda. Montagens exigem ordens de produção para serem produzidas.",
       "additionalCurrencies": "Moedas Adicionais",

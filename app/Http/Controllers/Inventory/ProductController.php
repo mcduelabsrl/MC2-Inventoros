@@ -14,13 +14,15 @@ use App\Models\Inventory\ProductCategory;
 use App\Models\Inventory\ProductLocation;
 use App\Models\Inventory\Supplier;
 use App\Models\Inventory\SupplierPriceHistory;
+use App\Models\Warehouse;
 use App\Services\ProductLocationStockService;
-use App\Services\WarehouseStockLevelService;
 use App\Services\ProductService;
+use App\Services\WarehouseStockLevelService;
 use App\Support\PluginQueryGuard;
 use App\Support\ProductSearch;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -155,6 +157,9 @@ class ProductController extends Controller
         ];
 
         return Inertia::render('Products/Create', [
+            // For the quick-add location: which warehouse it is in.
+            'warehouses' => Warehouse::forOrganization($organizationId)->where('is_active', true)
+                ->orderByDesc('is_default')->orderBy('name')->get(['id', 'name']),
             'categories' => $categories,
             'locations' => $locations,
             'suppliers' => $this->supplierOptions($organizationId),
@@ -328,6 +333,9 @@ class ProductController extends Controller
         ];
 
         return Inertia::render('Products/Edit', [
+            // For the quick-add location: which warehouse it is in.
+            'warehouses' => Warehouse::forOrganization($organizationId)->where('is_active', true)
+                ->orderByDesc('is_default')->orderBy('name')->get(['id', 'name']),
             'product' => $product,
             'categories' => $categories,
             'locations' => $locations,
@@ -443,7 +451,7 @@ class ProductController extends Controller
     /**
      * Active suppliers of the organization, for the product form's supplier picker.
      *
-     * @return \Illuminate\Support\Collection<int, Supplier>
+     * @return Collection<int, Supplier>
      */
     private function supplierOptions(int $organizationId)
     {
