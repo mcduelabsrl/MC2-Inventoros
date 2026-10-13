@@ -76,6 +76,25 @@ class ShopifyClient
 
     private const TIMEOUT_SECONDS = 20;
 
+    /** Most waits for Shopify's rate limit on one page before giving up. */
+    private const MAX_THROTTLE_WAITS = 8;
+
+    /**
+     * How the client waits for Shopify's rate limit (seconds). Tests swap
+     * it to record waits instead of sleeping.
+     *
+     * @var (\Closure(float): void)|null
+     */
+    public static ?\Closure $sleeper = null;
+
+    /**
+     * The rate-limit bucket after the last GraphQL answer (Shopify's
+     * extensions.cost): requested cost, points available, restore rate.
+     *
+     * @var array{requested: float, available: float, restore: float}|null
+     */
+    private ?array $lastCost = null;
+
     public function __construct(private readonly ShopifyConnection $connection) {}
 
     /**
@@ -438,11 +457,21 @@ class ShopifyClient
     {
         $cursor = null;
         $pages = 0;
+        $waits = 0;
 
         while (true) {
             try {
                 $data = $this->graphql($query, $variables + ['first' => $first, 'cursor' => $cursor]);
             } catch (ShopifyException $e) {
+                // Throttled (the rate-limit bucket is empty) or briefly
+                // unavailable: wait for the bucket to refill, then ask for
+                // the same page again.
+                if ($e->transient && $waits < self::MAX_THROTTLE_WAITS) {
+                    $this->wait($this->refillSeconds($waits++));
+
+                    continue;
+                }
+
                 $cost = self::costOver($e);
                 if ($cost === null || $first <= 1) {
                     throw $e;
@@ -451,6 +480,7 @@ class ShopifyClient
 
                 continue; // the same page again, smaller
             }
+            $waits = 0;
 
             foreach ($data[$root]['nodes'] ?? [] as $node) {
                 if (is_array($node)) {
@@ -463,7 +493,32 @@ class ShopifyClient
             if ($cursor === null || ++$pages >= $maxPages) {
                 return;
             }
+
+            // Not enough points left for another page like this one: wait
+            // for them rather than be throttled.
+            if ($this->lastCost !== null && $this->lastCost['available'] < $this->lastCost['requested']) {
+                $this->wait($this->refillSeconds(0));
+            }
         }
+    }
+
+    /**
+     * Seconds until the bucket holds enough points for the last query
+     * (from Shopify's figures), else a growing back-off; at most 30.
+     */
+    private function refillSeconds(int $attempt): float
+    {
+        $c = $this->lastCost;
+        if ($c !== null && $c['restore'] > 0) {
+            return min(30.0, max(1.0, ($c['requested'] - $c['available']) / $c['restore'] + 0.5));
+        }
+
+        return (float) min(30, 2 ** $attempt);
+    }
+
+    private function wait(float $seconds): void
+    {
+        self::$sleeper !== null ? (self::$sleeper)($seconds) : usleep((int) ($seconds * 1_000_000));
     }
 
     /**
@@ -1061,6 +1116,15 @@ class ShopifyClient
 
         $json = $response->json();
         $errors = is_array($json) ? ($json['errors'] ?? null) : null;
+
+        $cost = is_array($json) ? ($json['extensions']['cost'] ?? null) : null;
+        $this->lastCost = is_array($cost) && isset($cost['throttleStatus']['currentlyAvailable'], $cost['throttleStatus']['restoreRate'])
+            ? [
+                'requested' => (float) ($cost['requestedQueryCost'] ?? 0),
+                'available' => (float) $cost['throttleStatus']['currentlyAvailable'],
+                'restore' => (float) $cost['throttleStatus']['restoreRate'],
+            ]
+            : null;
 
         if (! empty($errors)) {
             $messages = is_array($errors) ? array_map(fn ($e) => is_array($e) ? ($e['message'] ?? json_encode($e)) : (string) $e, $errors) : [(string) $errors];

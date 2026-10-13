@@ -35,6 +35,9 @@ trait FakesShopifyInventory
     /** Answer the next stock mutation with a transient HTTP 503. */
     protected int $failNext = 0;
 
+    /** Answer the next reads of every level as throttled (rate limit). */
+    protected int $throttleReads = 0;
+
     /** Apply the next stock mutation but lose the answer (a timeout). */
     protected bool $loseNextAnswer = false;
 
@@ -45,6 +48,13 @@ trait FakesShopifyInventory
                 $this->failNext--;
 
                 return ['errors' => [['message' => 'Throttled', 'extensions' => ['code' => 'THROTTLED']]]];
+            }
+
+            if ($this->throttleReads > 0 && str_contains($query, 'query InventoryItems(')) {
+                $this->throttleReads--;
+
+                return ['errors' => [['message' => 'Throttled', 'extensions' => ['code' => 'THROTTLED']]],
+                    'extensions' => ['cost' => ['requestedQueryCost' => 400, 'throttleStatus' => ['maximumAvailable' => 1000, 'currentlyAvailable' => 100, 'restoreRate' => 50]]]];
             }
 
             if ($this->loseNextAnswer && preg_match('/inventoryAdjustQuantities|inventoryMoveQuantities|inventorySetQuantities|fulfillmentCreate/', $query)) {
