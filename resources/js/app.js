@@ -10,7 +10,9 @@ import { applyRegionalProp } from './lib/formatSettings';
 import { applyActiveOrganization, withOrganizationHeader } from './lib/activeOrganization';
 import { installPluginRuntime, loadPluginAssets, resolveRuntimePage } from './plugins/runtime';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+// The server renders <title> with config('app.name') (APP_NAME): use that,
+// so the name is set where the app runs, not where its assets were built.
+const appName = document.title.trim() || import.meta.env.VITE_APP_NAME || 'Inventoros';
 
 // window.Inventoros: Vue plus the plugin SDK, for pre-built plugin bundles
 // that are imported at runtime (see ./plugins/runtime.js).
