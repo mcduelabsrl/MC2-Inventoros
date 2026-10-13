@@ -53,6 +53,10 @@ class VariantStockController extends Controller
             'owner' => ['nullable', 'string', 'max:20'],
             'anomalies' => ['nullable', 'boolean'],
             'quality_control' => ['nullable', 'boolean'],
+            // model, options, sku, barcode, total, or a warehouse id (its
+            // physical units).
+            'sort' => ['nullable', 'string', 'max:20', 'regex:/^(model|options|sku|barcode|total|\d+)$/'],
+            'dir' => ['nullable', 'in:asc,desc'],
         ]);
 
         $query = ProductVariant::query()
@@ -90,6 +94,7 @@ class VariantStockController extends Controller
                     ->whereColumn('order_item_allocations.product_variant_id', 'product_variants.id')
                     ->where('shortfall_quantity', '>', 0)
                     ->whereRaw('quantity > fulfilled_quantity + released_quantity'))))
+            ->tap(fn ($q) => $this->sort($q, $filters['sort'] ?? null, $filters['dir'] ?? 'asc', $warehouses))
             ->orderBy('products.name')
             ->orderBy('product_variants.position')
             ->orderBy('product_variants.id');
@@ -481,6 +486,28 @@ class VariantStockController extends Controller
     private function authorizeVariant(Request $request, ProductVariant $variant): void
     {
         abort_unless((int) $variant->organization_id === (int) $request->user()->organization_id, 404);
+    }
+
+    /**
+     * Order the grid by a column (clicked header): text columns as they
+     * read, stock columns by physical units (one warehouse, or all).
+     */
+    private function sort($query, ?string $column, string $dir, Collection $warehouses): void
+    {
+        $units = fn (?int $warehouseId) => VariantStockLevel::query()
+            ->selectRaw('coalesce(sum(on_hand), 0)')
+            ->whereColumn('variant_stock_levels.product_variant_id', 'product_variants.id')
+            ->when($warehouseId !== null, fn ($q) => $q->where('variant_stock_levels.warehouse_id', $warehouseId));
+
+        match (true) {
+            $column === 'model' => $query->orderBy('products.name', $dir),
+            $column === 'options' => $query->orderBy('product_variants.title', $dir),
+            $column === 'sku' => $query->orderBy('product_variants.sku', $dir),
+            $column === 'barcode' => $query->orderBy('product_variants.barcode', $dir),
+            $column === 'total' => $query->orderBy($units(null), $dir),
+            $column !== null && $warehouses->contains('id', (int) $column) => $query->orderBy($units((int) $column), $dir),
+            default => null,
+        };
     }
 
     private function authorizeTransfer(Request $request, VariantStockTransfer $transfer): void

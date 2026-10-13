@@ -3781,6 +3781,7 @@
     "sku": "SKU",
     "barcode": "Barcode",
     "total": "Totale",
+    "sortByUnits": "Ordina per paia fisiche",
     "onHand": "Fisico",
     "available": "Disponibile",
     "committed": "Impegnato",
