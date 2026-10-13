@@ -87,6 +87,8 @@ class AppServiceProvider extends ServiceProvider
         // Scoped: an organization override (ActiveOrganization::runAs) must
         // never outlive the request or job that set it.
         $this->app->scoped(\App\Support\Tenancy\OrganizationContext::class);
+        // Per-warehouse variant stock settings, read once per request or job.
+        $this->app->scoped(\App\Support\VariantWarehouseStockMemo::class);
     }
 
     /**

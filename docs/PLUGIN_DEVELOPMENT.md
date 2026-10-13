@@ -275,6 +275,7 @@ add_action('stock_changed', function ($product, $variant, array $change) {
 | `variant_updated` | `$variant`, `$user` | A product variant is edited on any surface, once per transaction, after commit. Stock moves alone fire `stock_changed` instead. |
 | `variant_deleted` | `$variant`, `$user` | A product variant is deleted on any surface, after commit. |
 | `stock_changed` | `$product`, `$variant`, `$change` | A product's or variant's on-hand stock, or one of the product's location bins, changed on any surface (adjustments, orders, receipts, transfers, returns, audits, imports, commands). Once per product or variant per transaction, after commit. See [Domain change hooks](#domain-change-hooks). |
+| `variant_stock_changed` | `$operation` | An operation on per-warehouse variant stock was committed (adjustment, count, order commitment/release/fulfilment, transfer, return, inspection, owner change, channel sync). `$operation->source` is `local`, `external` (reported by a sales channel: never send it back) or `import`; `$operation->movements` lists each variant, warehouse, owner, bucket and delta. Only for organizations with per-warehouse variant stock on. |
 | `stock_adjusted` | `$stock_adjustment`, `$product` | A stock adjustment is committed. `$product` is null for a variant adjustment. |
 | `low_stock_alert` | `$product` | A product's stock drops to or below its minimum. |
 | `out_of_stock_alert` | `$product` | A product's stock reaches zero. |

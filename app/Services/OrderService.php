@@ -27,6 +27,8 @@ use App\Support\ApprovalSettings;
 use App\Support\Money;
 use App\Support\OrderApprovalGate;
 use App\Support\SequenceNumberRetry;
+use App\Support\VariantWarehouseStockSettings;
+use App\Services\Inventory\VariantStockService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -177,7 +179,16 @@ final class OrderService
             // target (same product, or same variant) accumulate against one
             // running balance.
             $running = [];
+            // Per-warehouse variant stock: variant lines are checked against
+            // what is available in the warehouses when they are committed
+            // below. A sales channel that already sold the units may ask to
+            // commit them anyway (allow_stock_shortfall).
+            $variantMode = VariantWarehouseStockSettings::enabledFor((int) $orgId);
+            $allowShortfall = $variantMode && (bool) ($data['allow_stock_shortfall'] ?? false);
             foreach ($adjustStock ? $lines : [] as $line) {
+                if ($allowShortfall && $line['variant'] !== null) {
+                    continue;
+                }
                 $key = $line['key'];
                 $running[$key] = ($running[$key] ?? (int) $line['target']->stock) - $line['qty'];
                 if ($running[$key] < 0) {
@@ -291,6 +302,12 @@ final class OrderService
             foreach ($adjustStock ? $perTargetQty : [] as $key => $totalQty) {
                 $target = $targets[$key];
 
+                // Per-warehouse variant stock: the commitment below takes the
+                // units and refreshes the variant's stock.
+                if ($variantMode && $target instanceof ProductVariant) {
+                    continue;
+                }
+
                 // Draw the sold units out of the product's location bins before
                 // dropping the total, so the per-location breakdown never claims
                 // more than exists. Products only (bins are per-product; variant
@@ -308,6 +325,35 @@ final class OrderService
             // serials-as-source-of-truth: products without enough tracked
             // serials are left untouched, so creation is unchanged for them.
             $order->load('items');
+
+            // Per-warehouse variant stock: commit each variant line in the
+            // warehouses (the plan a channel gives, else priority order).
+            // An order recorded as history still commits when the caller
+            // says its units are still set aside (commit_variant_stock).
+            if ($variantMode && ($adjustStock || (bool) ($data['commit_variant_stock'] ?? false))) {
+                $variantStock = app(VariantStockService::class);
+                $dataItems = array_values($data['items']);
+                foreach ($order->items->values() as $index => $orderItem) {
+                    if ($orderItem->product_variant_id === null) {
+                        continue;
+                    }
+                    $variantStock->commitOrderItem(
+                        $orderItem,
+                        (int) $orderItem->quantity,
+                        $dataItems[$index]['allocation_plan'] ?? null,
+                        $allowShortfall,
+                        [
+                            'user_id' => $creator->id,
+                            'reason' => "Order {$order->order_number}",
+                            // create() wrote its own ledger rows above.
+                            'legacy_ledger' => ! $adjustStock,
+                            'legacy_type' => 'order_fulfillment',
+                            'legacy_reference' => $order,
+                        ],
+                    );
+                }
+            }
+
             $allocator = app(TrackedStockAllocationService::class);
             foreach ($adjustStock ? $order->items : [] as $orderItem) {
                 $product = $products->get($orderItem->product_id);
@@ -533,6 +579,23 @@ final class OrderService
      */
     private function restockItem(OrderItem $item, string $reason, Order $order, int $quantity, ?User $actor = null): void
     {
+        // Per-warehouse variant stock: the line's units are still committed
+        // where they were allocated; give back exactly what is still open
+        // there (units that shipped are not open any more). This also covers
+        // an order recorded as history whose units were committed later.
+        if ($item->product_variant_id !== null && VariantWarehouseStockSettings::enabledFor((int) $order->organization_id)) {
+            $variantStock = app(VariantStockService::class);
+            $open = array_sum($variantStock->openByWarehouse($item));
+            $variantStock->releaseOrderItem($item, $open, [
+                'user_id' => $this->restockActor($order, $actor)?->id,
+                'reason' => $reason,
+                'legacy_type' => 'order_cancellation',
+                'legacy_reference' => $order,
+            ]);
+
+            return;
+        }
+
         if ($quantity <= 0) {
             return;
         }
@@ -851,7 +914,7 @@ final class OrderService
 
             $qty = (int) $item['quantity'];
             $running[$key] = ($running[$key] ?? (int) $target->stock) - $qty;
-            if ($commitsStock && $running[$key] < 0) {
+            if ($commitsStock && $running[$key] < 0 && ! ($variant !== null && VariantWarehouseStockSettings::enabledFor((int) $order->organization_id))) {
                 throw new InsufficientStockException(
                     "Insufficient stock for {$product->name}. Available: {$target->stock}, requested: {$qty}"
                 );
@@ -902,7 +965,14 @@ final class OrderService
                 continue;
             }
 
-            if ($variant !== null) {
+            if ($variant !== null && VariantWarehouseStockSettings::enabledFor((int) $order->organization_id)) {
+                app(VariantStockService::class)->commitOrderItem($orderItem, $qty, null, false, [
+                    'user_id' => $this->restockActor($order, $actor)?->id,
+                    'reason' => "Order {$order->order_number} edited",
+                    'legacy_type' => 'order_fulfillment',
+                    'legacy_reference' => $order,
+                ]);
+            } elseif ($variant !== null) {
                 StockAdjustment::adjustVariant(
                     $variant, -$qty, 'order_fulfillment',
                     "Order {$order->order_number} edited", null, $order, allowNegative: false,

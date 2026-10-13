@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Models\Inventory;
 
+use App\Exceptions\BusinessRuleException;
+use App\Exceptions\VariantStockException;
 use App\Exceptions\InsufficientStockException;
 use App\Models\Auth\Organization;
 use App\Models\User;
+use App\Services\Inventory\VariantStockService;
 use App\Services\ProductLocationStockService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -297,8 +301,16 @@ class StockAdjustment extends Model
         ?string $notes = null,
         ?Model $reference = null,
         bool $allowNegative = true,
-        ?User $actor = null
+        ?User $actor = null,
+        ?int $warehouseId = null,
+        ?int $stockOwnerId = null,
     ): self {
+        // Per-warehouse variant stock: the change lands in a warehouse (the
+        // one named, else the default) and the variant's total follows.
+        if (VariantWarehouseStockSettings::enabledFor((int) $variant->organization_id)) {
+            return self::adjustVariantInWarehouse($variant, $quantity, $type, $reason, $notes, $reference, $allowNegative, $actor, $warehouseId, $stockOwnerId);
+        }
+
         return DB::transaction(function () use ($variant, $quantity, $type, $reason, $notes, $reference, $allowNegative, $actor) {
             // Re-fetch the variant with a row lock — same race protection as
             // adjust() above.
@@ -342,5 +354,58 @@ class StockAdjustment extends Model
 
             return $adjustment;
         });
+    }
+
+    private static function adjustVariantInWarehouse(
+        ProductVariant $variant,
+        int $quantity,
+        string $type,
+        ?string $reason,
+        ?string $notes,
+        ?Model $reference,
+        bool $allowNegative,
+        ?User $actor,
+        ?int $warehouseId,
+        ?int $stockOwnerId,
+    ): self {
+        $service = app(VariantStockService::class);
+        $warehouseId ??= $service->defaultWarehouseId((int) $variant->organization_id);
+
+        if ($warehouseId === null) {
+            throw new VariantStockException('No active warehouse to book the stock in.');
+        }
+
+        $operation = $service->adjust($variant, $warehouseId, $stockOwnerId, $quantity, [
+            'type' => $type === 'opening_stock' ? VariantStockOperation::TYPE_OPENING : VariantStockOperation::TYPE_ADJUSTMENT,
+            'user_id' => $actor?->id ?? auth()->id(),
+            'reason' => $reason,
+            'notes' => $notes,
+            'allow_negative' => $allowNegative,
+            'legacy_type' => $type,
+            'legacy_reference' => $reference,
+            'meta' => ['legacy_type' => $type],
+        ]);
+
+        $variant->refresh();
+
+        /** @var self|null $adjustment */
+        $adjustment = $operation->getRelationValue('legacyAdjustment');
+
+        if ($adjustment === null) {
+            // Nothing changed the total (e.g. a zero adjustment).
+            return new self([
+                'organization_id' => $variant->organization_id,
+                'product_id' => $variant->product_id,
+                'product_variant_id' => $variant->id,
+                'type' => $type,
+                'quantity_before' => (int) $variant->stock,
+                'quantity_after' => (int) $variant->stock,
+                'adjustment_quantity' => 0,
+            ]);
+        }
+
+        DB::afterCommit(fn () => do_action('stock_adjusted', $adjustment, null));
+
+        return $adjustment;
     }
 }

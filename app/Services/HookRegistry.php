@@ -148,6 +148,11 @@ final class HookRegistry
                 'parameters' => ['$product', '$variant', '$change'],
                 'example' => "add_action('stock_changed', function (\$product, \$variant, \$change) { /* ... */ });",
             ],
+            'variant_stock_changed' => [
+                'description' => 'Fired after commit for every operation on per-warehouse variant stock (adjustment, count, order commitment, release, fulfilment, transfer, return, inspection, owner change, channel sync). The operation carries its source (local, external, import), type, order/transfer/return ids and its movements (variant, warehouse, owner, bucket, delta). Sales channel plugins send local operations on; external ones came from a channel and must not be sent back.',
+                'parameters' => ['$operation'],
+                'example' => "add_action('variant_stock_changed', function (\$operation) { /* ... */ });",
+            ],
             'stock_adjusted' => [
                 'description' => 'Fired after a stock adjustment is committed ($product is null for a variant adjustment)',
                 'parameters' => ['$stock_adjustment', '$product'],

@@ -6,6 +6,7 @@ namespace App\Services\Shipping;
 
 use App\Enums\OrderStatus;
 use App\Enums\ShipmentStatus;
+use App\Exceptions\BusinessRuleException;
 use App\Exceptions\ShippingException;
 use App\Mail\ShipmentShippedEmail;
 use App\Models\Order\Order;
@@ -15,8 +16,10 @@ use App\Models\Shipping\ShipmentItem;
 use App\Models\Shipping\ShippingSetting;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Inventory\VariantStockService;
 use App\Services\OrderService;
 use App\Services\WarehouseAccessService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -322,6 +325,12 @@ final class ShipmentService
 
             $locked->forceFill($attributes)->save();
 
+            // The first time the shipment leaves, its variant units leave
+            // the warehouse (per-warehouse variant stock).
+            if (! $wasLeft && $locked->status->hasLeft() && $order !== null) {
+                $this->fulfilVariantLines($locked, $order);
+            }
+
             if (isset($attributes['status'])) {
                 $this->syncOrderStatus($locked);
             }
@@ -441,6 +450,59 @@ final class ShipmentService
                 $item->id => max(0, (int) $item->quantity - ($allocated[$item->id] ?? 0)),
             ])
             ->all();
+    }
+
+    /**
+     * Take a leaving shipment's variant units out of stock in its warehouse.
+     *
+     * A shipment made in Inventoros ships only units already gathered in
+     * its warehouse: if some are still committed elsewhere it is refused
+     * until a consolidation transfer has brought them over. A shipment a
+     * sales channel reports (reported_by_channel) is recorded as it
+     * happened. Runs inside the caller's transaction.
+     *
+     * @throws ShippingException
+     */
+    private function fulfilVariantLines(Shipment $shipment, Order $order): void
+    {
+        if (! VariantWarehouseStockSettings::enabledFor((int) $order->organization_id)) {
+            return;
+        }
+
+        $stock = app(VariantStockService::class);
+        $warehouseId = $shipment->warehouse_id !== null
+            ? (int) $shipment->warehouse_id
+            : $stock->defaultWarehouseId((int) $order->organization_id);
+
+        if ($warehouseId === null) {
+            return;
+        }
+
+        $items = ShipmentItem::where('shipment_id', $shipment->id)->get();
+        $orderItems = OrderItem::whereIn('id', $items->pluck('order_item_id'))->get()->keyBy('id');
+
+        foreach ($items as $shipmentItem) {
+            $orderItem = $orderItems->get($shipmentItem->order_item_id);
+            if ($orderItem === null || $orderItem->product_variant_id === null) {
+                continue;
+            }
+
+            try {
+                $stock->fulfilOrderItem(
+                    $orderItem,
+                    (int) $shipmentItem->quantity,
+                    $warehouseId,
+                    strict: $shipment->reported_by_channel === null,
+                    context: [
+                        'reason' => "Shipment {$shipment->id} of order {$order->order_number}",
+                        'idempotency_key' => "shipment:{$shipment->id}:item:{$shipmentItem->id}",
+                        'meta' => ['shipment_id' => $shipment->id, 'channel' => $shipment->reported_by_channel],
+                    ],
+                );
+            } catch (BusinessRuleException $e) {
+                throw new ShippingException($e->getMessage());
+            }
+        }
     }
 
     /**

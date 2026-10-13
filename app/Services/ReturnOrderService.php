@@ -19,6 +19,8 @@ use App\Support\SequenceNumberRetry;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use App\Services\Inventory\VariantStockService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -481,12 +483,30 @@ final class ReturnOrderService
             // never depend on a session being present.
             $ledgerActor = $actor ?? $this->systemActor($locked);
 
+            $variantMode = VariantWarehouseStockSettings::enabledFor((int) $locked->organization_id);
+
             foreach ($locked->items as $item) {
                 // A line sold as a variant decremented the variant, so the
                 // return credits the variant back (lines raised before the
                 // column existed fall back to their order line's variant).
                 // Variant stock has no location bins.
                 $variant = $item->variant ?? $item->orderItem?->variant;
+
+                // Per-warehouse variant stock: every pair that physically
+                // comes back lands in the returns warehouse, waiting for
+                // inspection (not on sale), with the owner it was sold from.
+                if ($variantMode && $variant !== null && $item->orderItem !== null) {
+                    app(VariantStockService::class)->receiveReturn($item->orderItem, (int) $item->quantity, null, [
+                        'user_id' => $ledgerActor?->id,
+                        'reason' => "Return {$locked->return_number}",
+                        'return_order_id' => $locked->id,
+                        'legacy_type' => 'return',
+                        'legacy_reference' => $locked,
+                        'idempotency_key' => "return:{$locked->id}:item:{$item->id}",
+                    ]);
+
+                    continue;
+                }
 
                 if ($item->restock && $item->product && $variant !== null) {
                     StockAdjustment::adjustVariant(
