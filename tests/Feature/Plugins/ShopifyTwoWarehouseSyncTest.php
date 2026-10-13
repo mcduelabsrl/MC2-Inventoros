@@ -30,6 +30,7 @@ use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
 use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
+use Inventoros\Plugins\Shopify\ShopifyClient;
 use Inventoros\Plugins\Shopify\ShopifyException;
 use Inventoros\Plugins\Shopify\Stock\OutboxProcessor;
 use Inventoros\Plugins\Shopify\Stock\RoutingCheck;
@@ -322,6 +323,27 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->assertSame(1, $this->qty(self::I42, self::MC2, 'on_hand'));
         $this->assertSame(1, ShopifyStockIssue::where('kind', 'count_conflict')->count());
         $this->assertSame(ShopifyInventoryLevel::CONFLICT, ShopifyInventoryLevel::where('inventory_item_id', self::I42)->where('location_id', self::MC2)->value('sync_status'));
+    }
+
+    public function test_the_set_up_waits_for_shopifys_rate_limit_instead_of_failing(): void
+    {
+        $waits = [];
+        ShopifyClient::$sleeper = function (float $seconds) use (&$waits) {
+            $waits[] = $seconds;
+        };
+        $this->throttleReads = 2;
+
+        try {
+            $summary = (new StockBootstrap($this->connection->fresh()))->run(false);
+        } finally {
+            ShopifyClient::$sleeper = null;
+        }
+
+        $this->assertSame(0, $this->throttleReads, 'Both throttled answers were met.');
+        $this->assertCount(2, $waits);
+        // (400 needed - 100 available) / 50 per second, plus a margin.
+        $this->assertEqualsWithDelta(6.5, $waits[0], 0.01);
+        $this->assertFileExists($summary['comparison']['file']);
     }
 
     public function test_a_stock_audit_by_warehouse_is_sent_as_a_compare_and_set_count(): void
