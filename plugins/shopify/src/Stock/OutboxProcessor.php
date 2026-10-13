@@ -417,6 +417,14 @@ class OutboxProcessor
             $wanted[ShopifyClient::gid('InventoryItem', $line['inventory_item_id'])] = ($wanted[ShopifyClient::gid('InventoryItem', $line['inventory_item_id'])] ?? 0) + (int) $line['quantity'];
         }
 
+        // Shopify refuses to move an order to a location where its items
+        // were never stocked ("None of the items are stocked at the new
+        // location"): stock them there first. For an item already stocked
+        // there this changes nothing.
+        foreach (array_keys($wanted) as $item) {
+            $this->client->activateAtLocation($item, $to);
+        }
+
         $errors = [];
         foreach ($this->client->fulfillmentOrders((string) $shopifyOrderId) as $fo) {
             if ($fo['location_id'] !== $from || $fo['status'] !== 'OPEN') {

@@ -482,6 +482,27 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->assertSame(VariantStockTransfer::CHANNEL_SYNCED, $transfer->fresh()->channel_status);
     }
 
+    public function test_consolidating_an_item_never_stocked_at_mc2_stocks_it_there_first(): void
+    {
+        // As in the store: the 43 was only ever stocked at Via Maragliano.
+        unset($this->inv[self::I43][self::MC2]);
+        $this->setUpAndActivate();
+
+        $this->shopifySale(self::I43, self::SAX, 1);
+        $this->fulfilmentOrders('7101', [['location' => self::SAX, 'lines' => [['item' => self::I43, 'qty' => 1, 'line_item_id' => '711']]]]);
+        $this->postWebhook('orders/create', $this->orderPayload([['id' => 711, 'sku' => 'SUN-43', 'title' => 'Sunday 43', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00']],
+            ['id' => 7101, 'name' => '#7101', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-7101')->assertOk();
+        $order = Order::where('external_id', '7101')->sole();
+
+        app(VariantTransferService::class)->consolidate($order, $this->warehouse('MC2')->id, $this->admin);
+
+        $this->assertSame(0, ShopifyStockOperation::where('status', '!=', ShopifyStockOperation::CONFIRMED)->count(), 'Nothing failed.');
+        $this->assertCount(1, $this->appliedTo('fulfillmentOrderMove'));
+        $this->assertSame([1, 1, 0], [$this->qty(self::I43, self::MC2, 'on_hand'), $this->qty(self::I43, self::MC2, 'committed'), $this->qty(self::I43, self::MC2, 'available')]);
+        $this->assertSame([0, 0], [$this->qty(self::I43, self::SAX, 'on_hand'), $this->qty(self::I43, self::SAX, 'committed')]);
+        $this->assertSame([1, 1], [$this->local($this->size43, 'MC2')['on_hand'], $this->local($this->size43, 'MC2')['committed']]);
+    }
+
     public function test_an_order_split_across_sites_is_consolidated_at_mc2_and_ships_once(): void
     {
         $this->setUpAndActivate();
