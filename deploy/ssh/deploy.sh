@@ -72,6 +72,16 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     [ "$APPLY" = 1 ] && exit 1
 fi
 
+# Production gets main as it is on GitHub, never another branch or a main
+# behind or ahead of origin.
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+git fetch --quiet origin main || { echo "Could not reach origin to check main." >&2; [ "$APPLY" = 1 ] && exit 1; }
+if [ "$BRANCH" != "main" ] || [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+    echo "This checkout is $BRANCH at $(git rev-parse --short HEAD); origin/main is $(git rev-parse --short origin/main)." >&2
+    echo "Deploy only main as on GitHub: git switch main && git pull --ff-only" >&2
+    [ "$APPLY" = 1 ] && exit 1
+fi
+
 # What goes into inventoros/: the same entries a cPanel package holds.
 APP_ENTRIES=(LICENSE VERSION app artisan bootstrap composer.json composer.lock config database lang plugins resources routes)
 APP_EXCLUDES=(
