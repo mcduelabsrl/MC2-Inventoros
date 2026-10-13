@@ -3781,6 +3781,7 @@
     "sku": "SKU",
     "barcode": "Barcode",
     "total": "Total",
+    "sortByUnits": "Sort by physical units",
     "onHand": "On hand",
     "available": "Available",
     "committed": "Committed",

@@ -8,7 +8,7 @@ import Modal from '@/Components/Modal.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { Search, ChevronDown, ChevronRight, AlertTriangle, ArrowLeftRight, SlidersHorizontal, ClipboardCheck, UserCheck } from 'lucide-vue-next';
+import { Search, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, AlertTriangle, ArrowLeftRight, SlidersHorizontal, ClipboardCheck, UserCheck } from 'lucide-vue-next';
 import { displayDate } from '@/lib/dates';
 import { usePermissions } from '@/composables/usePermissions';
 
@@ -30,6 +30,8 @@ const warehouseFilter = ref(props.filters?.warehouse_id || '');
 const ownerFilter = ref(props.filters?.owner || '');
 const onlyAnomalies = ref(!!props.filters?.anomalies);
 const onlyToCheck = ref(!!props.filters?.quality_control);
+const sort = ref(props.filters?.sort || '');
+const dir = ref(props.filters?.dir || 'asc');
 
 const applyFilters = () => {
     router.get(route('stock-by-warehouse.index'), {
@@ -38,8 +40,24 @@ const applyFilters = () => {
         owner: ownerFilter.value || undefined,
         anomalies: onlyAnomalies.value ? 1 : undefined,
         quality_control: onlyToCheck.value ? 1 : undefined,
+        sort: sort.value || undefined,
+        dir: sort.value ? dir.value : undefined,
     }, { preserveState: true, preserveScroll: true });
 };
+
+// Click a header to sort by it; again to reverse. Stock columns start with
+// the most units first.
+const sortBy = (column) => {
+    const numeric = column === 'total' || /^\d+$/.test(String(column));
+    if (sort.value === String(column)) {
+        dir.value = dir.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sort.value = String(column);
+        dir.value = numeric ? 'desc' : 'asc';
+    }
+    applyFilters();
+};
+const sortIcon = (column) => (sort.value !== String(column) ? ChevronsUpDown : dir.value === 'asc' ? ChevronUp : ChevronDown);
 
 const ownerName = (id) => (id === null || id === undefined ? t('stockByWarehouse.unassigned') : (props.owners.find((o) => o.id === id)?.name ?? `#${id}`));
 const warehouseName = (id) => props.warehouses.find((w) => w.id === id)?.name ?? `#${id}`;
@@ -285,12 +303,16 @@ const tdClass = 'px-3 py-2 text-sm text-text-primary align-top';
                 <thead class="bg-surface-overlay">
                     <tr>
                         <th :class="thClass" class="w-8"></th>
-                        <th :class="thClass">{{ t('stockByWarehouse.model') }}</th>
-                        <th :class="thClass">{{ t('stockByWarehouse.variant') }}</th>
-                        <th :class="thClass">{{ t('stockByWarehouse.sku') }}</th>
-                        <th :class="thClass">{{ t('stockByWarehouse.barcode') }}</th>
-                        <th v-for="w in warehouses" :key="w.id" :class="thClass" class="text-right">{{ w.name }}</th>
-                        <th :class="thClass" class="text-right">{{ t('stockByWarehouse.total') }}</th>
+                        <th v-for="col in [['model', t('stockByWarehouse.model')], ['options', t('stockByWarehouse.variant')], ['sku', t('stockByWarehouse.sku')], ['barcode', t('stockByWarehouse.barcode')]]" :key="col[0]" :class="thClass" :aria-sort="sort === col[0] ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="sortBy(col[0])">
+                                {{ col[1] }} <component :is="sortIcon(col[0])" :size="12" :class="sort === col[0] ? 'text-brand' : 'text-text-tertiary'" />
+                            </button>
+                        </th>
+                        <th v-for="col in [...warehouses.map((w) => [String(w.id), w.name]), ['total', t('stockByWarehouse.total')]]" :key="col[0]" :class="thClass" class="text-right" :aria-sort="sort === col[0] ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" :title="t('stockByWarehouse.sortByUnits')" @click="sortBy(col[0])">
+                                {{ col[1] }} <component :is="sortIcon(col[0])" :size="12" :class="sort === col[0] ? 'text-brand' : 'text-text-tertiary'" />
+                            </button>
+                        </th>
                         <th :class="thClass">{{ t('stockByWarehouse.anomalies') }}</th>
                         <th :class="thClass"></th>
                     </tr>

@@ -45,6 +45,26 @@ final class StockByWarehouseScreenTest extends TestCase
                 ->where('variants.data.0.unassigned', 2));
     }
 
+    public function test_the_grid_sorts_by_a_clicked_column_both_ways(): void
+    {
+        $this->putStock($this->size43, $this->mc2, 5);
+        $sku = fn (array $query) => fn (AssertableInertia $page) => $page->where('variants.data.0.sku', $query['first'])->where('filters.sort', $query['sort']);
+
+        // MC2: 43 has 5, 42 has 2. Saxone: 42 has 3, 43 none. Total: 43 5, 42 5.
+        $this->get(route('stock-by-warehouse.index', ['sort' => (string) $this->mc2->id, 'dir' => 'desc']))
+            ->assertInertia($sku(['first' => 'SUNDAY-BLACK-43', 'sort' => (string) $this->mc2->id]));
+        $this->get(route('stock-by-warehouse.index', ['sort' => (string) $this->mc2->id, 'dir' => 'asc']))
+            ->assertInertia($sku(['first' => 'SUNDAY-BLACK-42', 'sort' => (string) $this->mc2->id]));
+        $this->get(route('stock-by-warehouse.index', ['sort' => (string) $this->saxone->id, 'dir' => 'desc']))
+            ->assertInertia($sku(['first' => 'SUNDAY-BLACK-42', 'sort' => (string) $this->saxone->id]));
+        $this->get(route('stock-by-warehouse.index', ['sort' => 'sku', 'dir' => 'desc']))
+            ->assertInertia($sku(['first' => 'SUNDAY-BLACK-43', 'sort' => 'sku']));
+        $this->get(route('stock-by-warehouse.index', ['sort' => 'sku', 'dir' => 'asc']))
+            ->assertInertia($sku(['first' => 'SUNDAY-BLACK-42', 'sort' => 'sku']));
+        // Anything else is refused.
+        $this->get(route('stock-by-warehouse.index', ['sort' => 'products.name; drop']))->assertSessionHasErrors('sort');
+    }
+
     public function test_filters_by_owner_including_to_be_assigned(): void
     {
         $this->get(route('stock-by-warehouse.index', ['owner' => (string) $this->ownerSaxone->id]))
