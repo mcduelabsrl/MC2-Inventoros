@@ -487,6 +487,8 @@
       "descPlaceholder": "وصف اختياري..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "إضافة موقع سريع",
       "locationName": "اسم الموقع",
       "namePlaceholder": "مثال: المستودع أ",
@@ -509,6 +511,7 @@
       "serial": "تتبع الأرقام التسلسلية"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "نوع المنتج",
       "productTypeHint": "تجمع الأطقم مكونات للبيع معاً. تتطلب التجميعات أوامر عمل لإنتاجها.",
       "additionalCurrencies": "عملات إضافية",

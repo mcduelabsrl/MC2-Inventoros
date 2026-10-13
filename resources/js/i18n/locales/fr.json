@@ -487,6 +487,8 @@
       "descPlaceholder": "Description facultative..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Ajout rapide d'emplacement",
       "locationName": "Nom de l'emplacement",
       "namePlaceholder": "ex. : Entrepôt A",
@@ -509,6 +511,7 @@
       "serial": "Suivi par numéro de série"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Type de produit",
       "productTypeHint": "Les kits regroupent des composants pour la vente. Les assemblages nécessitent des ordres de fabrication pour être produits.",
       "additionalCurrencies": "Devises supplémentaires",

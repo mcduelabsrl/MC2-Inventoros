@@ -487,6 +487,8 @@
       "descPlaceholder": "Opis (opcjonalnie)..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Szybkie dodawanie lokalizacji",
       "locationName": "Nazwa lokalizacji",
       "namePlaceholder": "np. Magazyn A",
@@ -509,6 +511,7 @@
       "serial": "Śledzenie numerów seryjnych"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Typ produktu",
       "productTypeHint": "Zestawy łączą komponenty w jeden produkt na sprzedaż. Produkty złożone wymagają zleceń produkcyjnych.",
       "additionalCurrencies": "Dodatkowe waluty",

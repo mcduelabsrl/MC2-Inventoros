@@ -487,6 +487,8 @@
       "descPlaceholder": "선택적 설명..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "빠른 위치 추가",
       "locationName": "위치명",
       "namePlaceholder": "예: 창고 A",
@@ -509,6 +511,7 @@
       "serial": "일련번호 추적"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "제품 유형",
       "productTypeHint": "키트는 구성품을 묶어 판매합니다. 조립품은 생산하려면 작업 지시가 필요합니다.",
       "additionalCurrencies": "추가 통화",

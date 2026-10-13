@@ -487,6 +487,8 @@
       "descPlaceholder": "Descrizione facoltativa..."
     },
     "quickAddLocation": {
+      "warehouse": "Magazzino",
+      "noWarehouse": "Nessun magazzino",
       "title": "Aggiunta rapida ubicazione",
       "locationName": "Nome ubicazione",
       "namePlaceholder": "es. Magazzino A",
@@ -509,6 +511,7 @@
       "serial": "Tracciamento numeri di serie"
     },
     "form": {
+      "locationOptionalHint": "Facoltativa. Per i prodotti con varianti le paia sono contate per magazzino, in Giacenze per magazzino.",
       "productType": "Tipo di prodotto",
       "productTypeHint": "I kit raggruppano componenti per la vendita. Gli assemblati richiedono ordini di lavoro per essere prodotti.",
       "additionalCurrencies": "Valute aggiuntive",

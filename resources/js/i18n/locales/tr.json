@@ -487,6 +487,8 @@
       "descPlaceholder": "İsteğe bağlı açıklama..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "Hızlı Konum Ekle",
       "locationName": "Konum Adı",
       "namePlaceholder": "ör. Depo A",
@@ -509,6 +511,7 @@
       "serial": "Seri Numarası Takibi"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "Ürün Türü",
       "productTypeHint": "Setler, bileşenleri satış için bir araya getirir. Montaj ürünleri üretim için iş emri gerektirir.",
       "additionalCurrencies": "Ek Para Birimleri",

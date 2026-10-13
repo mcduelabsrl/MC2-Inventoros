@@ -65,6 +65,15 @@ final class StockByWarehouseScreenTest extends TestCase
         $this->get(route('stock-by-warehouse.index', ['sort' => 'products.name; drop']))->assertSessionHasErrors('sort');
     }
 
+    public function test_a_product_saves_without_location_and_a_quick_location_has_its_warehouse(): void
+    {
+        $this->get(route('products.edit', $this->shoe))
+            ->assertInertia(fn (AssertableInertia $page) => $page->has('warehouses', 2)->where('warehouses.0.id', $this->mc2->id));
+
+        $this->postJson(route('locations.store'), ['name' => 'Scaffale A', 'code' => 'MC2-A', 'warehouse_id' => $this->mc2->id])
+            ->assertOk()->assertJsonPath('location.warehouse_id', $this->mc2->id);
+    }
+
     public function test_filters_by_owner_including_to_be_assigned(): void
     {
         $this->get(route('stock-by-warehouse.index', ['owner' => (string) $this->ownerSaxone->id]))

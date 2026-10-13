@@ -23,6 +23,7 @@ const { t } = useI18n();
 const props = defineProps({
     categories: Array,
     locations: Array,
+    warehouses: { type: Array, default: () => [] },
     suppliers: { type: Array, default: () => [] },
     currencies: Object,
     defaultCurrency: String,
@@ -106,7 +107,7 @@ const removeCurrency = (index) => {
 const showCategoryModal = ref(false);
 const showLocationModal = ref(false);
 const categoryForm = ref({ name: '', description: '' });
-const locationForm = ref({ name: '', code: '', description: '' });
+const locationForm = ref({ name: '', code: '', description: '', warehouse_id: props.warehouses?.[0]?.id ?? '' });
 const categoryLoading = ref(false);
 const locationLoading = ref(false);
 
@@ -151,7 +152,7 @@ const createLocation = async () => {
             router.reload({ only: ['locations'] });
             form.location_id = response.data.location.id;
             showLocationModal.value = false;
-            locationForm.value = { name: '', code: '', description: '' };
+            locationForm.value = { name: '', code: '', description: '', warehouse_id: props.warehouses?.[0]?.id ?? '' };
         }
     } catch (error) {
         console.error('Error creating location:', error);
@@ -174,6 +175,7 @@ const fieldLabel = 'mb-1 block text-sm font-medium text-text-secondary';
 const fieldInput = 'h-9 w-full rounded-md border border-border-subtle bg-surface-canvas px-3 text-sm text-text-primary placeholder:text-text-tertiary ds-focus-ring';
 const fieldArea = 'w-full rounded-md border border-border-subtle bg-surface-canvas px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary ds-focus-ring';
 const fieldError = 'mt-1 text-xs text-status-danger';
+const fieldHint = 'mt-1 text-xs text-text-tertiary';
 </script>
 
 <template>
@@ -421,13 +423,13 @@ const fieldError = 'mt-1 text-xs text-status-danger';
                         <div>
                             <div class="mb-1 flex items-center justify-between">
                                 <label for="category" :class="fieldLabel + ' mb-0'">
-                                    {{ t('products.category') }} <span class="text-status-danger">*</span>
+                                    {{ t('products.category') }}
                                 </label>
                                 <button type="button" @click="showCategoryModal = true" class="text-xs font-medium text-brand hover:text-brand-hover">
                                     {{ t('products.create.quickAdd') }}
                                 </button>
                             </div>
-                            <select id="category" v-model="form.category_id" :class="fieldInput" required>
+                            <select id="category" v-model="form.category_id" :class="fieldInput">
                                 <option value="">{{ t('products.create.selectCategory') }}</option>
                                 <option v-for="category in categories" :key="category.id" :value="category.id">
                                     {{ category.name }}
@@ -440,19 +442,20 @@ const fieldError = 'mt-1 text-xs text-status-danger';
                         <div>
                             <div class="mb-1 flex items-center justify-between">
                                 <label for="location" :class="fieldLabel + ' mb-0'">
-                                    {{ t('products.location') }} <span class="text-status-danger">*</span>
+                                    {{ t('products.location') }}
                                 </label>
                                 <button type="button" @click="showLocationModal = true" class="text-xs font-medium text-brand hover:text-brand-hover">
                                     {{ t('products.create.quickAdd') }}
                                 </button>
                             </div>
-                            <select id="location" v-model="form.location_id" :class="fieldInput" required>
+                            <select id="location" v-model="form.location_id" :class="fieldInput">
                                 <option value="">{{ t('products.create.selectLocation') }}</option>
                                 <option v-for="location in locations" :key="location.id" :value="location.id">
                                     {{ location.name }}
                                 </option>
                             </select>
                             <p v-if="form.errors.location_id" :class="fieldError">{{ form.errors.location_id }}</p>
+                            <p :class="fieldHint">{{ t('products.form.locationOptionalHint') }}</p>
                         </div>
 
                         <!-- Tracking Type -->
@@ -640,6 +643,14 @@ const fieldError = 'mt-1 text-xs text-status-danger';
                     :placeholder="t('products.quickAddLocation.codePlaceholder')"
                     required
                 />
+            </div>
+
+            <div>
+                <label :class="fieldLabel">{{ t('products.quickAddLocation.warehouse') }}</label>
+                <select v-model="locationForm.warehouse_id" :class="fieldInput">
+                    <option value="">{{ t('products.quickAddLocation.noWarehouse') }}</option>
+                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
+                </select>
             </div>
             <div>
                 <label :class="fieldLabel">{{ t('common.description') }}</label>

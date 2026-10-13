@@ -487,6 +487,8 @@
       "descPlaceholder": "可选描述..."
     },
     "quickAddLocation": {
+      "warehouse": "Warehouse",
+      "noWarehouse": "No warehouse",
       "title": "快速添加库位",
       "locationName": "库位名称",
       "namePlaceholder": "例如：仓库 A",
@@ -509,6 +511,7 @@
       "serial": "序列号跟踪"
     },
     "form": {
+      "locationOptionalHint": "Optional. For products with variants, units are counted per warehouse, in Stock by warehouse.",
       "productType": "产品类型",
       "productTypeHint": "套件将多个组件捆绑销售。组装件需要通过工单生产。",
       "additionalCurrencies": "其他货币",
