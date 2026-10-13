@@ -12,6 +12,7 @@ use App\Models\Inventory\VariantStockOperation;
 use App\Models\Inventory\VariantStockTransfer;
 use App\Models\Order\Order;
 use App\Models\Order\OrderItemAllocation;
+use App\Models\Shipping\Shipment;
 use App\Models\Warehouse;
 use App\Services\Inventory\VariantStockService;
 use App\Services\Inventory\VariantTransferService;
@@ -19,7 +20,9 @@ use App\Services\OrderService;
 use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryLevel;
+use Inventoros\Plugins\Shopify\Models\ShopifyLink;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
@@ -416,10 +419,28 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->assertSame([3, 2, 1], [$this->local($this->size42, 'MC2')['on_hand'], $this->local($this->size42, 'MC2')['committed'], $this->local($this->size42, 'MC2')['available']]);
         $this->assertSame(2, $this->local($this->size42, 'SAX')['available']);
 
-        // One shipment, from MC2.
+        // One shipment, from MC2: it fulfils the order in Shopify too.
         $shipments = app(ShipmentService::class);
-        $shipments->markShipped($shipments->create($order, ['warehouse_id' => $this->warehouse('MC2')->id]));
+        $shipment = $shipments->markShipped($shipments->create($order, [
+            'warehouse_id' => $this->warehouse('MC2')->id, 'carrier_name' => 'BRT', 'tracking_number' => 'TRK1',
+        ]));
         $this->assertSame([1, 0], [$this->local($this->size42, 'MC2')['on_hand'], $this->local($this->size42, 'MC2')['committed']]);
+
+        $this->assertCount(1, $this->fulfillments);
+        $this->assertSame(self::MC2, $this->fulfillments[0]['location']);
+        $this->assertSame('TRK1', $this->fulfillments[0]['trackingInfo']['number']);
+        $this->assertFalse($this->fulfillments[0]['notifyCustomer']);
+        $this->assertSame(['on_hand' => 1, 'committed' => 0], ['on_hand' => $this->qty(self::I42, self::MC2, 'on_hand'), 'committed' => $this->qty(self::I42, self::MC2, 'committed')]);
+
+        // Shopify reports the fulfilment back: recognised, nothing moves twice.
+        $line = ['id' => 71, 'sku' => 'SUN-42', 'title' => 'Sunday 42', 'quantity' => 2, 'current_quantity' => 2, 'price' => '159.00'];
+        $this->postWebhook('orders/updated', $this->orderPayload([$line], ['id' => 7001, 'name' => '#7001', 'financial_status' => 'paid', 'updated_at' => now()->addMinute()->toIso8601String(),
+            'fulfillments' => [['id' => 500, 'status' => 'success', 'created_at' => now()->toIso8601String(), 'location_id' => 117678637382, 'line_items' => [['id' => 71, 'sku' => 'SUN-42', 'quantity' => 2]]]]]),
+            $this->connection->webhook_token, 'o-7001-f')->assertOk();
+
+        $this->assertSame(1, Shipment::where('order_id', $order->id)->count());
+        $this->assertSame($shipment->id, ShopifyLink::where('shopify_id', '500')->value('local_id'));
+        $this->assertSame(1, $this->local($this->size42, 'MC2')['on_hand']);
     }
 
     public function test_a_return_of_saxone_pairs_goes_to_quality_control_at_mc2_in_both_systems(): void
@@ -562,5 +583,58 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
 
         $this->assertSame('check_routing', $rows[0]['verdict']);
         $this->assertSame([], $this->appliedTo('fulfillmentOrderMove'), 'The check changes nothing.');
+    }
+
+    // ------------------------------------------------------------------
+    // Fulfilments from Inventoros, also without per-warehouse stock
+    // ------------------------------------------------------------------
+
+    public function test_a_shipment_made_in_inventoros_fulfils_the_shopify_order_once_even_after_a_lost_answer(): void
+    {
+        // The store as it is today: no stock set-up, one location.
+        $this->connection->forceFill(['location_map' => [['location_id' => self::SAX, 'warehouse_id' => null]]])->save();
+        $this->size43->forceFill(['stock' => 5])->save();
+        $this->stockItem(self::I43, 'SUN-43', [self::SAX => ['available' => 4, 'committed' => 1]]);
+        ShopifyInventoryItem::query()->create(['organization_id' => $this->org->id, 'sku' => 'SUN-43', 'inventory_item_id' => self::I43, 'tracked' => true]);
+        $this->fulfilmentOrders('6001', [['location' => self::SAX, 'lines' => [['item' => self::I43, 'qty' => 1, 'line_item_id' => '61']]]]);
+        $line = ['id' => 61, 'sku' => 'SUN-43', 'title' => 'Sunday 43', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00'];
+        $this->postWebhook('orders/create', $this->orderPayload([$line], ['id' => 6001, 'name' => '#6001', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-6001')->assertOk();
+        $order = Order::where('external_id', '6001')->sole();
+        $this->actingAs($this->admin);
+
+        // Shopify fulfils, but the answer is lost.
+        $this->loseNextAnswer = true;
+        $shipments = app(ShipmentService::class);
+        $shipments->markShipped($shipments->create($order, ['tracking_number' => 'TRK6']));
+
+        $operation = ShopifyStockOperation::where('kind', 'fulfillment_create')->sole();
+        $this->assertSame(ShopifyStockOperation::PENDING, $operation->status, 'Not shown as done without an answer.');
+        $this->assertCount(1, $this->fulfillments);
+
+        // The retry reads the order first: already fulfilled, nothing twice.
+        $operation->forceFill(['next_attempt_at' => null])->save();
+        (new OutboxProcessor($this->connection->fresh()))->run();
+        $this->assertSame(ShopifyStockOperation::CONFIRMED, $operation->fresh()->status);
+        $this->assertCount(1, $this->fulfillments);
+        $this->assertSame(0, $this->qty(self::I43, self::SAX, 'committed'));
+
+        // No stock push of totals in this mode either.
+        $this->assertSame([], $this->appliedTo('inventoryAdjustQuantities'));
+    }
+
+    public function test_fulfilments_can_be_turned_off(): void
+    {
+        $this->connection->forceFill(['push_fulfillments' => false, 'location_map' => [['location_id' => self::SAX, 'warehouse_id' => null]]])->save();
+        $this->size43->forceFill(['stock' => 5])->save();
+        $this->fulfilmentOrders('6002', [['location' => self::SAX, 'lines' => [['item' => self::I43, 'qty' => 1, 'line_item_id' => '62']]]]);
+        $line = ['id' => 62, 'sku' => 'SUN-43', 'title' => 'Sunday 43', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00'];
+        $this->postWebhook('orders/create', $this->orderPayload([$line], ['id' => 6002, 'name' => '#6002', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-6002');
+        $this->actingAs($this->admin);
+
+        $shipments = app(ShipmentService::class);
+        $shipments->markShipped($shipments->create(Order::where('external_id', '6002')->sole(), []));
+
+        $this->assertSame([], $this->fulfillments);
+        $this->assertSame(0, ShopifyStockOperation::count());
     }
 }

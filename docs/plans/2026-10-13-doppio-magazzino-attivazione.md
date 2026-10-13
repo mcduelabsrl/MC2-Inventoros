@@ -22,6 +22,17 @@ Le scritture verso Shopify partono solo con `shopify:stock-activate`, dopo che i
   - Riconciliazione notturna in sola lettura.
   - Conflitti segnalati all'operatore.
 
+## Spedizioni: solo da Inventoros
+
+- **Evasione su Shopify.** Quando una spedizione di un ordine Shopify parte da Inventoros, l'ordine viene evaso anche su Shopify, con corriere e tracking, dalla location del magazzino da cui è partita.
+- **Coda e tentativi.** L'evasione passa per la stessa coda delle giacenze: viene ritentata, se ne vede lo stato, e un errore compare tra le anomalie con il pulsante "Riprova".
+- **Mail al cliente.** Shopify non manda la mail al cliente; la manda Inventoros, se la spedizione lo prevede.
+- **Ritorno da Shopify.** L'evasione che Shopify rimanda indietro viene riconosciuta: non crea una seconda spedizione e non scarica di nuovo.
+- **Indipendente dalla modalità di giacenza.** Funziona anche prima di attivare i due magazzini, quindi già con la produzione di oggi.
+- **Scope richiesto.** Serve lo scope `write_merchant_managed_fulfillment_orders`. Senza, l'evasione fallisce, viene segnalata e si può ritentare dopo aver aggiunto lo scope.
+- **Disattivazione.** Si spegne con `push_fulfillments = false` sulla connessione.
+- **Evasioni fatte su Shopify.** Un'evasione fatta comunque su Shopify diventa una spedizione in Inventoros, come prima.
+
 ## Schermate
 
 - **Magazzino → Giacenze per magazzino.** La griglia per variante con:
@@ -133,7 +144,6 @@ Tutti i comandi vanno lanciati sul server, in `~/www/saxone.eu/inventoros`, con 
 ## Limiti noti
 
 - **Trasferimenti ordinari.** Sono inviati come rettifica atomica sulle due location (una sola chiamata), non come oggetti trasferimento di Shopify: quelli richiedono spedizione e ricezione separate, mentre qui il trasferimento è immediato. Gli oggetti trasferimento si usano per #T0001.
-- **Spedizione degli ordini Shopify.** Una spedizione registrata in Inventoros per un ordine Shopify non crea l'evasione su Shopify. L'evasione va fatta su Shopify; fino ad allora l'impegnato su Shopify resta e la location mostra "In attesa".
 - **Prodotti semplici e conteggi.** I prodotti senza varianti restano sul sistema precedente (ubicazioni). I conteggi inventariali (`stock_audits`) non gestiscono ancora le varianti per magazzino: per le scarpe usa il conteggio dalla nuova schermata.
 - **Stato "safety_stock" di Shopify.** Non viene importato come stato separato.
 - **Interfaccia.** La pagina impostazioni del plugin non mostra ancora lo stato dell'outbox. Stati e anomalie sono nella schermata *Giacenze per magazzino*.

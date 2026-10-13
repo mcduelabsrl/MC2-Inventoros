@@ -764,6 +764,45 @@ class ShopifyClient
     }
 
     /**
+     * Fulfil fulfilment order lines (the units leave), with tracking.
+     *
+     * @param  array<string, array<int, array{id: string, quantity: int}>>  $linesByFulfillmentOrder  fulfilment order gid => its lines
+     * @param  array{company?: string|null, number?: string|null, url?: string|null}  $tracking
+     * @return array{id: string|null, legacy_id: string|null, errors: array<int, string>}
+     */
+    public function createFulfillment(array $linesByFulfillmentOrder, array $tracking, bool $notifyCustomer): array
+    {
+        $fulfillment = [
+            'notifyCustomer' => $notifyCustomer,
+            'lineItemsByFulfillmentOrder' => array_map(fn ($foId, $lines) => [
+                'fulfillmentOrderId' => $foId,
+                'fulfillmentOrderLineItems' => array_map(fn ($l) => ['id' => $l['id'], 'quantity' => (int) $l['quantity']], array_values($lines)),
+            ], array_keys($linesByFulfillmentOrder), array_values($linesByFulfillmentOrder)),
+        ];
+
+        $tracking = array_filter([
+            'company' => $tracking['company'] ?? null,
+            'number' => $tracking['number'] ?? null,
+            'url' => $tracking['url'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+        if ($tracking !== []) {
+            $fulfillment['trackingInfo'] = $tracking;
+        }
+
+        $data = $this->graphql(
+            'mutation CreateFulfillment($fulfillment: FulfillmentInput!) { fulfillmentCreate(fulfillment: $fulfillment) { fulfillment { id legacyResourceId status location { id } } userErrors { field message } } }',
+            ['fulfillment' => $fulfillment],
+        );
+        $payload = $data['fulfillmentCreate'] ?? [];
+
+        return [
+            'id' => $payload['fulfillment']['id'] ?? null,
+            'legacy_id' => isset($payload['fulfillment']['legacyResourceId']) ? (string) $payload['fulfillment']['legacyResourceId'] : null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
      * Assign some units of a fulfilment order to another location.
      *
      * @param  array<int, array{id: string, quantity: int}>  $lines  fulfilment order line items

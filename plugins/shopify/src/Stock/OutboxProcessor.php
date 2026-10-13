@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace Inventoros\Plugins\Shopify\Stock;
 
 use App\Models\Inventory\VariantStockTransfer;
+use App\Models\Order\OrderItem;
+use App\Models\Shipping\Shipment;
+use App\Models\Shipping\ShipmentItem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
+use Inventoros\Plugins\Shopify\Models\ShopifyLink;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
@@ -57,7 +62,10 @@ class OutboxProcessor
     {
         $summary = ['confirmed' => 0, 'failed' => 0, 'conflicts' => 0, 'waiting' => 0];
 
-        if (! $this->connection->isTwoWay()) {
+        // Without two-way stock only fulfilments are sent (shipments made in
+        // Inventoros fulfil the Shopify order whatever the stock mode).
+        $onlyFulfillments = ! $this->connection->isTwoWay();
+        if ($onlyFulfillments && ! $this->connection->push_fulfillments) {
             return $summary;
         }
 
@@ -68,7 +76,7 @@ class OutboxProcessor
 
         try {
             for ($i = 0; $i < $max; $i++) {
-                $operation = $this->next();
+                $operation = $this->next($onlyFulfillments);
                 if ($operation === null) {
                     break;
                 }
@@ -92,10 +100,11 @@ class OutboxProcessor
      * more than five minutes, i.e. its worker died), whose previous step is
      * confirmed. Strict order per store, so figures stay consistent.
      */
-    private function next(): ?ShopifyStockOperation
+    private function next(bool $onlyFulfillments = false): ?ShopifyStockOperation
     {
         $candidate = ShopifyStockOperation::query()
             ->where('organization_id', $this->connection->organization_id)
+            ->when($onlyFulfillments, fn ($q) => $q->where('kind', 'fulfillment_create'))
             ->where(fn ($q) => $q->where('status', ShopifyStockOperation::PENDING)
                 ->orWhere(fn ($q) => $q->where('status', ShopifyStockOperation::SENDING)->where('sent_at', '<', now()->subMinutes(5))))
             ->orderBy('id')
@@ -216,6 +225,7 @@ class OutboxProcessor
             'fulfillment_order_move' => $this->moveFulfillment($operation),
             'transfer_edit' => $this->editTransfer($operation),
             'shipment_receive' => $this->receiveShipment($operation),
+            'fulfillment_create' => $this->createFulfillment($operation),
             default => ['group_id' => null, 'changes' => [], 'errors' => [['code' => null, 'message' => "Unknown operation {$operation->kind}", 'field' => null]]],
         };
     }
@@ -456,5 +466,116 @@ class OutboxProcessor
         $errors = $this->client->receiveShipment((string) $payload['shipment_id'], (array) $payload['lines'], $operation->idempotency_key);
 
         return ['group_id' => null, 'changes' => [], 'errors' => array_map(fn ($m) => ['code' => null, 'message' => $m, 'field' => null], $errors)];
+    }
+
+    /**
+     * Fulfil in Shopify a shipment made in Inventoros: its units, from the
+     * location of the warehouse it left from, with its tracking.
+     *
+     * Shopify has no idempotency key for fulfilments, so a retry first reads
+     * the order again: units already fulfilled there (an earlier attempt
+     * whose answer was lost) are not fulfilled twice. The fulfilment is
+     * linked to the shipment, so when Shopify reports it back the order
+     * import recognises it and moves no stock.
+     *
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    private function createFulfillment(ShopifyStockOperation $operation): array
+    {
+        $fail = fn (string $message) => ['group_id' => null, 'changes' => [], 'errors' => [['code' => 'FULFILLMENT', 'message' => $message, 'field' => null]]];
+        $payload = $operation->payload;
+
+        $shipment = Shipment::withoutGlobalScopes()->find($payload['shipment_id'] ?? 0);
+        $shopifyOrderId = ShopifyOrder::query()->where('organization_id', $this->connection->organization_id)
+            ->where('order_id', $operation->order_id)->value('shopify_order_id');
+
+        if ($shipment === null || $shopifyOrderId === null) {
+            return $fail('The shipment or its Shopify order no longer exists.');
+        }
+
+        // What the shipment carries, by Shopify inventory item.
+        $map = new ChannelMap($this->connection, $this->client);
+        $wanted = [];
+        foreach (ShipmentItem::where('shipment_id', $shipment->id)->get() as $item) {
+            $orderItem = OrderItem::find($item->order_item_id);
+            $inventoryItem = $orderItem === null ? null : ($orderItem->product_variant_id !== null
+                ? $map->itemForVariant((int) $orderItem->product_variant_id)
+                : $this->itemForSku((string) $orderItem->sku));
+            if ($inventoryItem !== null) {
+                $wanted[$inventoryItem] = ($wanted[$inventoryItem] ?? 0) + (int) $item->quantity;
+            }
+        }
+
+        if ($wanted === []) {
+            return ['group_id' => null, 'changes' => [], 'errors' => []]; // nothing Shopify stocks
+        }
+
+        $location = $shipment->warehouse_id !== null ? $this->connection->locationForWarehouse((int) $shipment->warehouse_id) : null;
+        $fulfillmentOrders = $this->client->fulfillmentOrders((string) $shopifyOrderId);
+
+        $byFo = [];
+        $remainingAnywhere = [];
+        foreach ($fulfillmentOrders as $fo) {
+            foreach ($fo['lines'] as $line) {
+                $item = $line['inventory_item_id'] !== null ? ShopifyClient::gid('InventoryItem', $line['inventory_item_id']) : null;
+                if ($item !== null) {
+                    $remainingAnywhere[$item] = ($remainingAnywhere[$item] ?? 0) + $line['remaining'];
+                }
+            }
+            if ($fo['status'] !== 'OPEN' && $fo['status'] !== 'IN_PROGRESS') {
+                continue;
+            }
+            if ($location !== null && $fo['location_id'] !== $location) {
+                continue;
+            }
+            foreach ($fo['lines'] as $line) {
+                $item = $line['inventory_item_id'] !== null ? ShopifyClient::gid('InventoryItem', $line['inventory_item_id']) : null;
+                if ($item === null || ($wanted[$item] ?? 0) <= 0 || $line['remaining'] <= 0) {
+                    continue;
+                }
+                $qty = min($wanted[$item], $line['remaining']);
+                $byFo[$fo['id']][] = ['id' => $line['id'], 'quantity' => $qty];
+                $wanted[$item] -= $qty;
+            }
+        }
+
+        $missing = array_filter($wanted);
+        if ($missing !== []) {
+            // Already fulfilled in Shopify (nothing left anywhere): an earlier
+            // attempt went through, or someone fulfilled it there.
+            $alreadyDone = array_filter($missing, fn ($qty, $item) => ($remainingAnywhere[$item] ?? 0) === 0, ARRAY_FILTER_USE_BOTH) === $missing;
+            if ($alreadyDone && $byFo === []) {
+                return ['group_id' => null, 'changes' => [], 'errors' => []];
+            }
+
+            return $fail('Shopify does not have these units to fulfil from the shipment\'s location: the order may still be assigned to another location (consolidation not confirmed in Shopify yet) or changed there. Check the order in Shopify, then retry.');
+        }
+
+        $result = $this->client->createFulfillment($byFo, [
+            'company' => $shipment->carrier_name,
+            'number' => $shipment->tracking_number,
+            'url' => $shipment->tracking_url,
+        ], (bool) ($payload['notify_customer'] ?? false));
+
+        if ($result['errors'] !== []) {
+            return $fail(implode('; ', $result['errors']));
+        }
+
+        if ($result['legacy_id'] !== null) {
+            ShopifyLink::query()->updateOrCreate(
+                ['organization_id' => $this->connection->organization_id, 'kind' => ShopifyLink::FULFILLMENT, 'shopify_id' => $result['legacy_id']],
+                ['shopify_order_id' => (string) $shopifyOrderId, 'local_id' => $shipment->id, 'state' => 'shipped', 'meta' => ['created_by' => 'inventoros']],
+            );
+        }
+
+        return ['group_id' => $result['id'], 'changes' => [], 'errors' => []];
+    }
+
+    private function itemForSku(string $sku): ?string
+    {
+        $row = ShopifyInventoryItem::query()
+            ->where('organization_id', $this->connection->organization_id)->where('sku', $sku)->first();
+
+        return $row !== null && $row->tracked ? ShopifyClient::gid('InventoryItem', $row->inventory_item_id) : null;
     }
 }

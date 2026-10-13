@@ -23,6 +23,7 @@
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\VariantStockOperation;
+use App\Models\Order\Order;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
@@ -168,6 +169,47 @@ return function (string $slug, array $manifest): void {
         }
     });
 
+    // Shipments are made in Inventoros: the one that leaves fulfils the
+    // Shopify order (from the location of its warehouse, with tracking),
+    // through the outbox so it is retried and its status is visible. A
+    // shipment that came from a Shopify fulfilment is not sent back.
+    add_action('shipment_shipped', function ($shipment): void {
+        try {
+            if ($shipment->reported_by_channel !== null) {
+                return;
+            }
+            $order = Order::withoutGlobalScopes()->find($shipment->order_id);
+            if ($order === null || $order->source !== 'shopify') {
+                return;
+            }
+            $connection = ShopifyConnection::forOrganization((int) $order->organization_id);
+            if ($connection === null || ! $connection->push_fulfillments) {
+                return;
+            }
+            if (ShopifyStockOperation::query()->where('kind', 'fulfillment_create')->where('payload->shipment_id', $shipment->id)->exists()) {
+                return;
+            }
+
+            ShopifyStockOperation::create([
+                'organization_id' => $order->organization_id,
+                'kind' => 'fulfillment_create',
+                'status' => ShopifyStockOperation::PENDING,
+                'order_id' => $order->id,
+                'mode' => 'delta',
+                'payload' => [
+                    'shipment_id' => $shipment->id,
+                    // Inventoros emails the customer (if the shipment says so);
+                    // Shopify would send a second mail.
+                    'notify_customer' => false,
+                ],
+                'effect' => [],
+            ]);
+            ProcessStockOutbox::dispatch((int) $order->organization_id);
+        } catch (Throwable $e) {
+            report($e);
+        }
+    });
+
     add_filter('variant_stock_channel_status', fn ($statuses, $organizationId, $variantIds) => StockStatus::statuses($statuses, (int) $organizationId, (array) $variantIds));
     add_filter('variant_stock_channel_issues', fn ($issues, $organizationId, $variantId) => StockStatus::issues($issues, (int) $organizationId, $variantId === null ? null : (int) $variantId));
 
@@ -222,7 +264,7 @@ return function (string $slug, array $manifest): void {
         // included), check levels whose check was put off, and pick up
         // webhook deliveries that failed or waited.
         Schedule::call(function () {
-            ShopifyConnection::query()->where('stock_sync_mode', ShopifyConnection::STOCK_TWO_WAY)->pluck('organization_id')
+            ShopifyConnection::query()->pluck('organization_id')
                 ->each(function ($organizationId) {
                     if (ShopifyStockOperation::query()->where('organization_id', $organizationId)
                         ->whereIn('status', [ShopifyStockOperation::PENDING, ShopifyStockOperation::SENDING])->exists()) {

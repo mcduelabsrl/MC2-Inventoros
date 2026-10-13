@@ -174,6 +174,12 @@ For a store with more than one location whose stock lives in Inventoros per vari
 - **Returns** restocked by a Shopify refund are corrected to *quality control* in the returns warehouse, with their owner; they go back on sale after inspection.
 - **Issues** (conflicts, failed operations, unexplained differences) are listed on the *Stock by warehouse* screen with their decisions: use Shopify's figures, send Inventoros's, re-align the order, retry.
 
+### Shipments are made in Inventoros
+
+A shipment of a Shopify order that leaves Inventoros fulfils the order in Shopify: from the location of the warehouse it left from, with its carrier and tracking number, through the same outbox (retried, status visible, failures listed as issues with a retry). Shopify does not email the customer (Inventoros does, when the shipment says so). When Shopify reports the fulfilment back it is recognised and moves no stock again. This works in every stock mode; turn it off with `push_fulfillments` on the connection. It needs the `write_merchant_managed_fulfillment_orders` scope.
+
+A fulfilment made directly in Shopify still becomes a shipment in Inventoros, as before.
+
 ### Commands
 
 ```text

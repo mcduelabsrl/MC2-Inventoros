@@ -29,6 +29,9 @@ trait FakesShopifyInventory
     /** @var array<string, array<string, mixed>> transfer name => GraphQL node */
     protected array $transfers = [];
 
+    /** @var list<array<string, mixed>> fulfilments created through the API */
+    protected array $fulfillments = [];
+
     /** Answer the next stock mutation with a transient HTTP 503. */
     protected int $failNext = 0;
 
@@ -44,7 +47,7 @@ trait FakesShopifyInventory
                 return ['errors' => [['message' => 'Throttled', 'extensions' => ['code' => 'THROTTLED']]]];
             }
 
-            if ($this->loseNextAnswer && preg_match('/inventoryAdjustQuantities|inventoryMoveQuantities|inventorySetQuantities/', $query)) {
+            if ($this->loseNextAnswer && preg_match('/inventoryAdjustQuantities|inventoryMoveQuantities|inventorySetQuantities|fulfillmentCreate/', $query)) {
                 $this->loseNextAnswer = false;
                 $this->shopifyExtra = null;
                 try {
@@ -69,6 +72,7 @@ trait FakesShopifyInventory
                 str_contains($query, 'inventoryMoveQuantities(') => $this->idempotentOnce('inventoryMoveQuantities', $variables, fn () => $this->moveQ($variables['input'])),
                 str_contains($query, 'inventorySetQuantities(') && str_contains($query, '$key') => $this->idempotentOnce('inventorySetQuantities', $variables, fn () => $this->setQ($variables['input'])),
                 str_contains($query, 'query FulfillmentOrders(') => ['data' => ['order' => ['id' => $variables['id'], 'fulfillmentOrders' => ['nodes' => $this->fos[$this->legacy($variables['id'])] ?? []]]]],
+                str_contains($query, 'fulfillmentCreate(') => ['data' => ['fulfillmentCreate' => $this->createFulfillmentQ($variables['fulfillment'])]],
                 str_contains($query, 'fulfillmentOrderMove(') => ['data' => ['fulfillmentOrderMove' => $this->moveFo($variables)]],
                 str_contains($query, 'query Transfers(') => ['data' => ['inventoryTransfers' => ['nodes' => array_values(array_filter($this->transfers, fn ($t) => ltrim($t['name'], '#') === ltrim((string) $variables['query'], '#')))]]],
                 str_contains($query, 'inventoryTransferEdit(') => ['data' => ['inventoryTransferEdit' => $this->editTransfer($variables)]],
@@ -353,5 +357,38 @@ trait FakesShopifyInventory
         }
 
         return ['inventoryShipment' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]];
+    }
+
+    private function createFulfillmentQ(array $input): array
+    {
+        $id = count($this->fulfillments) + 500;
+        $location = null;
+        foreach ($input['lineItemsByFulfillmentOrder'] as $byFo) {
+            foreach ($this->fos as $orderId => $fos) {
+                foreach ($fos as $i => $fo) {
+                    if ($fo['id'] !== $byFo['fulfillmentOrderId']) {
+                        continue;
+                    }
+                    $location = $fo['assignedLocation']['location']['id'];
+                    foreach ($byFo['fulfillmentOrderLineItems'] as $want) {
+                        foreach ($fo['lineItems']['nodes'] as $j => $line) {
+                            if ($line['id'] !== $want['id']) {
+                                continue;
+                            }
+                            if ($want['quantity'] > $line['remainingQuantity']) {
+                                return ['fulfillment' => null, 'userErrors' => [['field' => ['fulfillment'], 'message' => 'Quantity exceeds remaining']]];
+                            }
+                            $this->fos[$orderId][$i]['lineItems']['nodes'][$j]['remainingQuantity'] -= $want['quantity'];
+                            // The units leave: committed and on hand go down.
+                            $this->inv[$line['inventoryItemId']][$location]['committed'] -= $want['quantity'];
+                        }
+                    }
+                }
+            }
+        }
+        $this->fulfillments[] = $input + ['id' => $id, 'location' => $location];
+        $this->applied[] = ['query' => 'fulfillmentCreate', 'variables' => $input];
+
+        return ['fulfillment' => ['id' => 'gid://shopify/Fulfillment/'.$id, 'legacyResourceId' => (string) $id, 'status' => 'SUCCESS', 'location' => ['id' => $location]], 'userErrors' => []];
     }
 }

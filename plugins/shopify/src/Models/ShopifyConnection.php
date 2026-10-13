@@ -45,6 +45,7 @@ use Illuminate\Support\Str;
  * @property array<string, mixed>|null $catalogue_import_summary
  * @property array<string, mixed>|null $catalogue_publish_summary
  * @property array<int, string>|null $missing_scopes
+ * @property bool $push_fulfillments
  */
 class ShopifyConnection extends Model
 {
@@ -84,6 +85,7 @@ class ShopifyConnection extends Model
         'stock_baseline_at',
         'stock_bootstrap_summary',
         'stock_reconciled_at',
+        'push_fulfillments',
     ];
 
     /** 1.x behaviour: push the available quantity of each SKU. */
@@ -120,6 +122,7 @@ class ShopifyConnection extends Model
             'stock_baseline_at' => 'datetime',
             'stock_bootstrap_summary' => 'array',
             'stock_reconciled_at' => 'datetime',
+            'push_fulfillments' => 'boolean',
         ];
     }
 

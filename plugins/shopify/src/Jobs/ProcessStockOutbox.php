@@ -37,7 +37,7 @@ class ProcessStockOutbox implements ShouldBeUniqueUntilProcessing, ShouldQueue
     public function handle(): void
     {
         $connection = ShopifyConnection::forOrganization($this->organizationId);
-        if ($connection === null || ! $connection->isTwoWay()) {
+        if ($connection === null) {
             return;
         }
 

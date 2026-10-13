@@ -165,6 +165,8 @@ $addColumns('shopify_connections', [
     'stock_baseline_at' => fn (Blueprint $t) => $t->timestamp('stock_baseline_at')->nullable(),
     'stock_bootstrap_summary' => fn (Blueprint $t) => $t->json('stock_bootstrap_summary')->nullable(),
     'stock_reconciled_at' => fn (Blueprint $t) => $t->timestamp('stock_reconciled_at')->nullable(),
+    // 2.1: shipments made in Inventoros fulfil the Shopify order.
+    'push_fulfillments' => fn (Blueprint $t) => $t->boolean('push_fulfillments')->default(true),
 ]);
 
 $addColumns('shopify_links', [
