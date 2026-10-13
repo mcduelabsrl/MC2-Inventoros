@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Database\PostgresConnection;
 use App\Listeners\DocumentEmailDelivered;
 use App\Listeners\SecurityEventSubscriber;
 use App\Listeners\WebhookEventSubscriber;
@@ -19,6 +20,7 @@ use App\Models\Inventory\Supplier;
 use App\Models\Inventory\WorkOrder;
 use App\Models\Order\Order;
 use App\Models\Order\ReturnOrder;
+use App\Models\PersonalAccessToken;
 use App\Models\Purchasing\PurchaseOrder;
 use App\Models\Role;
 use App\Models\User;
@@ -39,12 +41,24 @@ use App\Observers\SupplierObserver;
 use App\Observers\UserSecurityObserver;
 use App\Observers\WarehouseObserver;
 use App\Observers\WorkOrderObserver;
+use App\Services\Hooks\DomainHooks;
+use App\Services\Marketplace\PluginLicenceService;
+use App\Services\Organizations\ActiveOrganization;
+use App\Services\Plugins\PluginMcpToolRegistry;
+use App\Services\Plugins\PluginPermissionRegistry;
+use App\Services\Plugins\PluginWebhookEventRegistry;
 use App\Services\PluginService;
 use App\Services\PluginUIService;
+use App\Support\Tenancy\OrganizationContext;
+use App\Support\VariantWarehouseStockMemo;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
+use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Connection;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Markdown;
@@ -54,6 +68,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 /**
  * Main application service provider.
@@ -70,23 +85,25 @@ class AppServiceProvider extends ServiceProvider
     {
         // PostgreSQL connections compile LIKE as ILIKE so searches are
         // case-insensitive there too, as they already are on MySQL/SQLite.
-        \Illuminate\Database\Connection::resolverFor('pgsql', fn ($connection, $database, $prefix, $config) => new \App\Database\PostgresConnection($connection, $database, $prefix, $config));
+        Connection::resolverFor('pgsql', fn ($connection, $database, $prefix, $config) => new PostgresConnection($connection, $database, $prefix, $config));
 
         // Register PluginUIService as singleton
         $this->app->singleton(PluginUIService::class, function ($app) {
-            return new PluginUIService();
+            return new PluginUIService;
         });
 
         // Permissions registered by active plugins (register_permission()).
-        $this->app->singleton(\App\Services\Plugins\PluginPermissionRegistry::class);
-        $this->app->singleton(\App\Services\Plugins\PluginMcpToolRegistry::class);
-        $this->app->singleton(\App\Services\Plugins\PluginWebhookEventRegistry::class);
-        $this->app->singleton(\App\Services\Hooks\DomainHooks::class);
+        $this->app->singleton(PluginPermissionRegistry::class);
+        $this->app->singleton(PluginMcpToolRegistry::class);
+        $this->app->singleton(PluginWebhookEventRegistry::class);
+        $this->app->singleton(DomainHooks::class);
         // Scoped: its per-request document cache must not outlive a queued job.
-        $this->app->scoped(\App\Services\Marketplace\PluginLicenceService::class);
+        $this->app->scoped(PluginLicenceService::class);
         // Scoped: an organization override (ActiveOrganization::runAs) must
         // never outlive the request or job that set it.
-        $this->app->scoped(\App\Support\Tenancy\OrganizationContext::class);
+        $this->app->scoped(OrganizationContext::class);
+        // Per-warehouse variant stock settings, read once per request or job.
+        $this->app->scoped(VariantWarehouseStockMemo::class);
     }
 
     /**
@@ -144,11 +161,11 @@ class AppServiceProvider extends ServiceProvider
         // The active organization: the one picked with the organization
         // switcher (session) or the one an API token is bound to; a token
         // of a withdrawn membership no longer authenticates.
-        Event::listen(\Illuminate\Auth\Events\Login::class, [\App\Services\Organizations\ActiveOrganization::class, 'handleLogin']);
-        Event::listen(\Illuminate\Auth\Events\Authenticated::class, [\App\Services\Organizations\ActiveOrganization::class, 'handleAuthenticated']);
-        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
-        \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(
-            fn ($token, bool $isValid): bool => app(\App\Services\Organizations\ActiveOrganization::class)->tokenIsUsable($token, $isValid)
+        Event::listen(Login::class, [ActiveOrganization::class, 'handleLogin']);
+        Event::listen(Authenticated::class, [ActiveOrganization::class, 'handleAuthenticated']);
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
+        Sanctum::authenticateAccessTokensUsing(
+            fn ($token, bool $isValid): bool => app(ActiveOrganization::class)->tokenIsUsable($token, $isValid)
         );
 
         // Security audit trail: sign-ins, 2FA, API tokens, account and role changes
@@ -159,7 +176,7 @@ class AppServiceProvider extends ServiceProvider
         // A purchase order, invoice or shipment email is "sent" when it is
         // delivered, not when it is queued.
         Event::listen(MessageSent::class, [DocumentEmailDelivered::class, 'record']);
-        Event::listen(\Illuminate\Database\Events\TransactionRolledBack::class, [\App\Services\Hooks\DomainHooks::class, 'handleRollback']);
+        Event::listen(TransactionRolledBack::class, [DomainHooks::class, 'handleRollback']);
 
         // Scramble API documentation - Bearer token security
         Scramble::afterOpenApiGenerated(function (OpenApi $openApi) {

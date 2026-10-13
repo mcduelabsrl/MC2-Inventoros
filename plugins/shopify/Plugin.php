@@ -22,18 +22,30 @@
 
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
+use App\Models\Inventory\VariantStockOperation;
+use App\Models\Order\Order;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Inventoros\Plugins\Shopify\Http\SettingsController;
+use Inventoros\Plugins\Shopify\Http\StockSyncController;
 use Inventoros\Plugins\Shopify\Http\WebhookController;
 use Inventoros\Plugins\Shopify\Jobs\FullInventorySync;
+use Inventoros\Plugins\Shopify\Jobs\FullStockReconcile;
+use Inventoros\Plugins\Shopify\Jobs\ProcessStockOutbox;
+use Inventoros\Plugins\Shopify\Jobs\ProcessWebhookEvent;
 use Inventoros\Plugins\Shopify\Jobs\PushInventory;
+use Inventoros\Plugins\Shopify\Jobs\ReconcileInventoryLevels;
 use Inventoros\Plugins\Shopify\Jobs\RecoverOrders;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
+use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
+use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
 use Inventoros\Plugins\Shopify\PushGate;
+use Inventoros\Plugins\Shopify\Stock\OutboundPlanner;
+use Inventoros\Plugins\Shopify\Stock\StockConsole;
+use Inventoros\Plugins\Shopify\Stock\StockStatus;
 
 require_once __DIR__.'/src/autoload.php';
 
@@ -94,6 +106,17 @@ return function (string $slug, array $manifest): void {
             Route::delete('connection', [SettingsController::class, 'disconnect'])->name('disconnect');
         });
 
+    // Decisions on stock sync issues, from the stock-by-warehouse screen.
+    Route::middleware(['web', 'auth', 'permission:manage_stock'])
+        ->prefix('p/shopify/actions/stock')
+        ->name('plg.shopify.stock.')
+        ->group(function () {
+            Route::post('issues/{issue}/accept-shopify', [StockSyncController::class, 'acceptShopify'])->whereNumber('issue')->name('issues.accept');
+            Route::post('issues/{issue}/keep-inventoros', [StockSyncController::class, 'keepInventoros'])->whereNumber('issue')->name('issues.keep');
+            Route::post('issues/{issue}/realign-order', [StockSyncController::class, 'realignOrder'])->whereNumber('issue')->name('issues.realign');
+            Route::post('operations/{operation}/retry', [StockSyncController::class, 'retry'])->whereNumber('operation')->name('operations.retry');
+        });
+
     // Outside the web group: no session or CSRF; the HMAC signature
     // authenticates Shopify.
     Route::post('webhooks/plugins/shopify/{token}', WebhookController::class)
@@ -107,7 +130,7 @@ return function (string $slug, array $manifest): void {
 
     // Asked on every stock change: one indexed lookup. Not memoized, because
     // queue workers run for days and would never see a new connection.
-    $pushes = fn (int $organizationId): bool => (bool) ShopifyConnection::forOrganization($organizationId)?->canPushInventory();
+    $pushes = fn (int $organizationId): bool => (bool) ShopifyConnection::forOrganization($organizationId)?->legacyPushAllowed();
 
     $queuePush = function (?Product $product, ?ProductVariant $variant) use ($pushes): void {
         if ($product === null || PushGate::isPaused() || ! $pushes((int) $product->organization_id)) {
@@ -123,6 +146,93 @@ return function (string $slug, array $manifest): void {
     };
 
     add_action('stock_changed', fn ($product, $variant) => $queuePush($product, $variant));
+
+    // Stock per warehouse (2.0): every local operation on variant stock
+    // becomes tracked Shopify operations in the outbox, sent in order with
+    // compare-and-swap and idempotency keys (see Stock/OutboxProcessor).
+    add_action('variant_stock_changed', function ($operation): void {
+        try {
+            $connection = ShopifyConnection::forOrganization((int) $operation->organization_id);
+            if ($connection === null || ! $connection->isTwoWay()) {
+                return;
+            }
+            // Read it again: meta may have been completed in the same
+            // transaction (e.g. where a Shopify refund restocked).
+            $fresh = VariantStockOperation::with('movements')->find($operation->id);
+            if ($fresh !== null && (new OutboundPlanner($connection))->plan($fresh) !== []) {
+                ProcessStockOutbox::dispatch((int) $connection->organization_id);
+            }
+        } catch (Throwable $e) {
+            // Never let the integration break a stock movement; the periodic
+            // check finds what was not sent.
+            report($e);
+        }
+    });
+
+    // Shipments are made in Inventoros: the one that leaves fulfils the
+    // Shopify order (from the location of its warehouse, with tracking),
+    // through the outbox so it is retried and its status is visible. A
+    // shipment that came from a Shopify fulfilment is not sent back.
+    add_action('shipment_shipped', function ($shipment): void {
+        try {
+            if ($shipment->reported_by_channel !== null) {
+                return;
+            }
+            $order = Order::withoutGlobalScopes()->find($shipment->order_id);
+            if ($order === null || $order->source !== 'shopify') {
+                return;
+            }
+            $connection = ShopifyConnection::forOrganization((int) $order->organization_id);
+            if ($connection === null || ! $connection->push_fulfillments) {
+                return;
+            }
+            if (ShopifyStockOperation::query()->where('kind', 'fulfillment_create')->where('payload->shipment_id', $shipment->id)->exists()) {
+                return;
+            }
+
+            ShopifyStockOperation::create([
+                'organization_id' => $order->organization_id,
+                'kind' => 'fulfillment_create',
+                'status' => ShopifyStockOperation::PENDING,
+                'order_id' => $order->id,
+                'mode' => 'delta',
+                'payload' => [
+                    'shipment_id' => $shipment->id,
+                    // Shopify emails the customer (if the shipment says so),
+                    // with its tracking; Inventoros does not (filter below).
+                    'notify_customer' => (bool) $shipment->notify_customer,
+                ],
+                'effect' => [],
+            ]);
+            ProcessStockOutbox::dispatch((int) $order->organization_id);
+        } catch (Throwable $e) {
+            report($e);
+        }
+    });
+
+    // For a Shopify order whose shipment fulfils it in Shopify, Shopify
+    // sends the shipping confirmation: Inventoros does not send a second.
+    add_filter('shipment_customer_email', function ($send, $shipment) {
+        try {
+            if (! $send || $shipment->reported_by_channel !== null) {
+                return $send;
+            }
+            $order = Order::withoutGlobalScopes()->find($shipment->order_id);
+            if ($order === null || $order->source !== 'shopify') {
+                return $send;
+            }
+            $connection = ShopifyConnection::forOrganization((int) $order->organization_id);
+
+            return $connection === null || ! $connection->push_fulfillments;
+        } catch (Throwable $e) {
+            report($e);
+
+            return $send;
+        }
+    });
+
+    add_filter('variant_stock_channel_status', fn ($statuses, $organizationId, $variantIds) => StockStatus::statuses($statuses, (int) $organizationId, (array) $variantIds));
+    add_filter('variant_stock_channel_issues', fn ($issues, $organizationId, $variantId) => StockStatus::issues($issues, (int) $organizationId, $variantId === null ? null : (int) $variantId));
 
     // A new product or a changed SKU may now match a Shopify variant.
     add_action('product_created', fn ($product) => $queuePush($product, null));
@@ -162,9 +272,49 @@ return function (string $slug, array $manifest): void {
                 ->each(fn ($organizationId) => RecoverOrders::dispatch((int) $organizationId));
         })->everyTenMinutes()->name('shopify:recover-orders')->withoutOverlapping();
 
+        // 1.x only: the nightly push of available quantities. A store set up
+        // per warehouse never pushes totals (FullInventorySync refuses).
         Schedule::call(function () {
-            ShopifyConnection::query()->where('push_inventory', true)->whereNotNull('location_map')->pluck('organization_id')
+            ShopifyConnection::query()->where('push_inventory', true)->whereNotNull('location_map')
+                ->where(fn ($q) => $q->whereNull('stock_sync_mode')->orWhere('stock_sync_mode', ShopifyConnection::STOCK_LEGACY))
+                ->pluck('organization_id')
                 ->each(fn ($organizationId) => FullInventorySync::dispatch((int) $organizationId));
         })->dailyAt('02:40')->name('shopify:full-stock-sync')->withoutOverlapping();
+
+        // Stock per warehouse: send what waits in the outbox (retries
+        // included), check levels whose check was put off, and pick up
+        // webhook deliveries that failed or waited.
+        Schedule::call(function () {
+            ShopifyConnection::query()->pluck('organization_id')
+                ->each(function ($organizationId) {
+                    if (ShopifyStockOperation::query()->where('organization_id', $organizationId)
+                        ->whereIn('status', [ShopifyStockOperation::PENDING, ShopifyStockOperation::SENDING])->exists()) {
+                        ProcessStockOutbox::dispatch((int) $organizationId);
+                    }
+                });
+        })->everyMinute()->name('shopify:stock-outbox')->withoutOverlapping();
+
+        Schedule::call(function () {
+            ShopifyConnection::query()->where('stock_sync_mode', ShopifyConnection::STOCK_TWO_WAY)->pluck('organization_id')
+                ->each(fn ($organizationId) => ReconcileInventoryLevels::dispatch((int) $organizationId));
+        })->everyTwoMinutes()->name('shopify:stock-checks')->withoutOverlapping();
+
+        Schedule::call(function () {
+            ShopifyWebhookEvent::query()
+                ->whereIn('status', [ShopifyWebhookEvent::RECEIVED, ShopifyWebhookEvent::DEFERRED, ShopifyWebhookEvent::FAILED])
+                ->where('updated_at', '<', now()->subMinutes(10))
+                ->where('attempts', '<', 10)
+                ->orderBy('id')->limit(200)->pluck('id')
+                ->each(fn ($id) => ProcessWebhookEvent::dispatch((int) $id));
+        })->everyTenMinutes()->name('shopify:webhook-retries')->withoutOverlapping();
+
+        // Nightly read-only check of every level: catches what no webhook
+        // reported. It reads Shopify; it never pushes local totals.
+        Schedule::call(function () {
+            ShopifyConnection::query()->where('stock_sync_mode', ShopifyConnection::STOCK_TWO_WAY)->pluck('organization_id')
+                ->each(fn ($organizationId) => FullStockReconcile::dispatch((int) $organizationId));
+        })->dailyAt('02:40')->name('shopify:stock-reconcile')->withoutOverlapping();
+
+        StockConsole::register();
     }
 };

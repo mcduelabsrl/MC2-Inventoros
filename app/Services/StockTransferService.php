@@ -6,12 +6,14 @@ namespace App\Services;
 
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvalidStateException;
+use App\Exceptions\VariantStockException;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductLocation;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Inventory\StockTransfer;
 use App\Models\Inventory\StockTransferItem;
 use App\Models\User;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +56,21 @@ final class StockTransferService
         // Stock can only leave a warehouse the actor works in; any location
         // may be the destination.
         $this->warehouseAccess->authorizeLocation($actor, $fromLocation);
+
+        // Products sold by variant keep their stock per variant and
+        // warehouse; moving them goes through variant transfers, which move
+        // each variant's units and keep their owner.
+        $variantProducts = ! VariantWarehouseStockSettings::enabledFor($organizationId) ? collect() : Product::whereIn('id', array_column($data['items'], 'product_id'))
+            ->where('organization_id', $organizationId)
+            ->where('has_variants', true)
+            ->pluck('name');
+
+        if ($variantProducts->isNotEmpty()) {
+            throw new VariantStockException(
+                'These products are sold by variant; move them with a variant transfer (Stock by warehouse): '
+                .$variantProducts->implode(', ')
+            );
+        }
 
         // Determine if this is an inter-warehouse transfer
         $fromWarehouseId = $fromLocation->warehouse_id;

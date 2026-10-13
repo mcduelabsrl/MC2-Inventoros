@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\Inventory\Product;
+use App\Models\Inventory\VariantStockLevel;
 use App\Models\Inventory\WarehouseReorderPoint;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +28,18 @@ final class WarehouseStockLevelService
      */
     public function onHandByWarehouse(Product $product): array
     {
+        if ($this->byVariant($product)) {
+            // Per-warehouse variant stock: the variants' units, what is free
+            // to sell (on hand less committed and unsellable states).
+            return DB::table('variant_stock_levels')
+                ->where('product_id', $product->id)
+                ->groupBy('warehouse_id')
+                ->selectRaw('warehouse_id, sum('.VariantStockLevel::availableSql().') as on_hand')
+                ->pluck('on_hand', 'warehouse_id')
+                ->map(fn ($qty) => (int) $qty)
+                ->all();
+        }
+
         return DB::table('product_location_stocks as pls')
             ->join('product_locations as pl', 'pl.id', '=', 'pls.location_id')
             ->where('pls.product_id', $product->id)
@@ -65,11 +79,26 @@ final class WarehouseStockLevelService
             $result[(int) $balance->product_id][(int) $balance->warehouse_id] = (int) $balance->on_hand;
         }
 
+        // Per-warehouse variant stock for products sold by variant.
+        $variantBalances = DB::table('variant_stock_levels')
+            ->whereIntegerInRaw('product_id', $productIds)
+            ->groupBy('product_id', 'warehouse_id')
+            ->selectRaw('product_id, warehouse_id, sum('.VariantStockLevel::availableSql().') as on_hand')
+            ->get();
+        foreach ($variantBalances as $balance) {
+            $result[(int) $balance->product_id][(int) $balance->warehouse_id] = (int) $balance->on_hand;
+        }
+
         return $result;
     }
 
     public function onHandInWarehouse(int $productId, int $warehouseId): int
     {
+        if (DB::table('variant_stock_levels')->where('product_id', $productId)->exists()) {
+            return (int) DB::table('variant_stock_levels')->where('product_id', $productId)->where('warehouse_id', $warehouseId)
+                ->sum(DB::raw(VariantStockLevel::availableSql()));
+        }
+
         return (int) DB::table('product_location_stocks as pls')
             ->join('product_locations as pl', 'pl.id', '=', 'pls.location_id')
             ->where('pls.product_id', $productId)
@@ -211,5 +240,15 @@ final class WarehouseStockLevelService
         $target = $levels['max_stock'] ?? $levels['reorder_point'] ?? $levels['min_stock'] ?? 0;
 
         return max(1, (int) $target - $onHand);
+    }
+
+    /**
+     * A product sold by variant whose organization keeps variant stock per
+     * warehouse.
+     */
+    private function byVariant(Product $product): bool
+    {
+        return (bool) $product->has_variants
+            && VariantWarehouseStockSettings::enabledFor((int) $product->organization_id);
     }
 }

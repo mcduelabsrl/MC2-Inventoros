@@ -32,5 +32,7 @@ class ShopifyLink extends Model
 
     protected $table = 'shopify_links';
 
-    protected $fillable = ['organization_id', 'shopify_order_id', 'kind', 'shopify_id', 'local_id', 'state'];
+    protected $fillable = ['organization_id', 'shopify_order_id', 'kind', 'shopify_id', 'local_id', 'state', 'meta'];
+
+    protected $casts = ['meta' => 'array'];
 }

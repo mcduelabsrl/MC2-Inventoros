@@ -148,6 +148,11 @@ final class HookRegistry
                 'parameters' => ['$product', '$variant', '$change'],
                 'example' => "add_action('stock_changed', function (\$product, \$variant, \$change) { /* ... */ });",
             ],
+            'variant_stock_changed' => [
+                'description' => 'Fired after commit for every operation on per-warehouse variant stock (adjustment, count, order commitment, release, fulfilment, transfer, return, inspection, owner change, channel sync). The operation carries its source (local, external, import), type, order/transfer/return ids and its movements (variant, warehouse, owner, bucket, delta). Sales channel plugins send local operations on; external ones came from a channel and must not be sent back.',
+                'parameters' => ['$operation'],
+                'example' => "add_action('variant_stock_changed', function (\$operation) { /* ... */ });",
+            ],
             'stock_adjusted' => [
                 'description' => 'Fired after a stock adjustment is committed ($product is null for a variant adjustment)',
                 'parameters' => ['$stock_adjustment', '$product'],
@@ -515,6 +520,26 @@ final class HookRegistry
     public static function getFilters(): array
     {
         return [
+            // ========================================
+            // STOCK BY WAREHOUSE FILTERS
+            // ========================================
+            'variant_stock_channel_status' => [
+                'description' => 'Sync status of variant stock with sales channels, shown on the stock-by-warehouse screen. Return $statuses with [variant_id][warehouse_id] => [channel, status (synced|pending|error|conflict|unmapped), detail, last_synced_at] for the given variants.',
+                'parameters' => ['$statuses', '$organization_id', '$variant_ids'],
+                'example' => "add_filter('variant_stock_channel_status', function (\$statuses, \$organizationId, \$variantIds) { return \$statuses; });",
+            ],
+            'variant_stock_channel_issues' => [
+                'description' => 'Open stock sync issues from sales channels, listed on the stock-by-warehouse screen as anomalies: list of [id, channel, kind, message, product_variant_id, warehouse_id, created_at, actions]. $variant_id narrows to one variant (null for all).',
+                'parameters' => ['$issues', '$organization_id', '$variant_id'],
+                'example' => "add_filter('variant_stock_channel_issues', function (\$issues, \$organizationId, \$variantId) { return \$issues; });",
+            ],
+
+            'shipment_customer_email' => [
+                'description' => 'Whether Inventoros emails the customer when a shipment that asks for it first leaves. Return false when another system (e.g. the sales channel the order came from) notifies the customer instead, so they get one mail.',
+                'parameters' => ['$send', '$shipment'],
+                'example' => "add_filter('shipment_customer_email', function (\$send, \$shipment) { return \$send; });",
+            ],
+
             // ========================================
             // PRODUCT FILTERS
             // ========================================

@@ -63,6 +63,7 @@ class Shipment extends Model
         'created_by',
         'carrier',
         'carrier_name',
+        'reported_by_channel',
         'service',
         'tracking_number',
         'tracking_url',

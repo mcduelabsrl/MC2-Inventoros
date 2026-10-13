@@ -45,6 +45,7 @@ use Illuminate\Support\Str;
  * @property array<string, mixed>|null $catalogue_import_summary
  * @property array<string, mixed>|null $catalogue_publish_summary
  * @property array<int, string>|null $missing_scopes
+ * @property bool $push_fulfillments
  */
 class ShopifyConnection extends Model
 {
@@ -80,7 +81,21 @@ class ShopifyConnection extends Model
         'catalogue_import_summary',
         'catalogue_publish_summary',
         'missing_scopes',
+        'stock_sync_mode',
+        'stock_baseline_at',
+        'stock_bootstrap_summary',
+        'stock_reconciled_at',
+        'push_fulfillments',
     ];
+
+    /** 1.x behaviour: push the available quantity of each SKU. */
+    public const STOCK_LEGACY = 'legacy';
+
+    /** Per-warehouse stock is being set up: events are kept, nothing is sent. */
+    public const STOCK_PAUSED = 'paused';
+
+    /** Tracked operations both ways, per variant and location. */
+    public const STOCK_TWO_WAY = 'two_way';
 
     protected $hidden = ['client_secret', 'access_token', 'webhook_token'];
 
@@ -104,6 +119,10 @@ class ShopifyConnection extends Model
             'catalogue_import_summary' => 'array',
             'catalogue_publish_summary' => 'array',
             'missing_scopes' => 'array',
+            'stock_baseline_at' => 'datetime',
+            'stock_bootstrap_summary' => 'array',
+            'stock_reconciled_at' => 'datetime',
+            'push_fulfillments' => 'boolean',
         ];
     }
 
@@ -139,6 +158,39 @@ class ShopifyConnection extends Model
     public function canPushInventory(): bool
     {
         return $this->push_inventory && $this->locationMap() !== [];
+    }
+
+    /**
+     * Whether stock is kept per warehouse and synced as tracked operations
+     * (the 1.x push of totals is then off).
+     */
+    public function isTwoWay(): bool
+    {
+        return ($this->stock_sync_mode ?? self::STOCK_LEGACY) === self::STOCK_TWO_WAY;
+    }
+
+    /**
+     * Whether the 1.x push of available quantities may run. Never once the
+     * store is set up per warehouse (or being set up): it would pour the
+     * total of both warehouses into one location.
+     */
+    public function legacyPushAllowed(): bool
+    {
+        return ($this->stock_sync_mode ?? self::STOCK_LEGACY) === self::STOCK_LEGACY && $this->canPushInventory();
+    }
+
+    /**
+     * The Shopify location gid mapped to a warehouse.
+     */
+    public function locationForWarehouse(int $warehouseId): ?string
+    {
+        foreach ($this->locationMap() as $entry) {
+            if ($entry['warehouse_id'] === $warehouseId) {
+                return $entry['location_id'];
+            }
+        }
+
+        return null;
     }
 
     /**

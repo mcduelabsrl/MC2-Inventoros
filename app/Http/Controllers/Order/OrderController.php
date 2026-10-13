@@ -20,15 +20,19 @@ use App\Models\Customer;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Order\Order;
+use App\Models\Order\OrderItemAllocation;
 use App\Models\Warehouse;
+use App\Services\Inventory\VariantStockService;
 use App\Services\OrderService;
 use App\Services\Shipping\OrderShippingPanel;
 use App\Support\ApprovalSettings;
 use App\Support\Search;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -122,7 +126,7 @@ class OrderController extends Controller
             'canRecordPayments' => $request->user()->hasPermission(Permission::RECORD_PAYMENTS),
             'untrackedOrderCount' => (int) ($untracked->count ?? 0),
             'markPaidBefore' => filled($untracked->latest ?? null)
-                ? \Illuminate\Support\Carbon::parse($untracked->latest)->addDay()->toDateString()
+                ? Carbon::parse($untracked->latest)->addDay()->toDateString()
                 : null,
             'sources' => ['manual', 'ebay', 'shopify', 'amazon'],
             'activeWarehouse' => $activeWarehouse,
@@ -262,6 +266,9 @@ class OrderController extends Controller
                 : [],
             // Shipments and the "Ship" modal data (null without view_shipments).
             ...app(OrderShippingPanel::class)->forOrder($order, auth()->user()),
+            // Per-warehouse variant stock: where the order's pairs are
+            // committed and what must be brought to the shipping warehouse.
+            'variantStock' => $this->variantStockPanel($order),
             'pluginComponents' => [
                 'header' => get_page_components('orders.show', 'header'),
                 'actions' => get_page_components('orders.show', 'actions'),
@@ -568,5 +575,44 @@ class OrderController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function variantStockPanel(Order $order): ?array
+    {
+        if (! VariantWarehouseStockSettings::enabledFor((int) $order->organization_id)) {
+            return null;
+        }
+
+        $stock = app(VariantStockService::class);
+        $target = $stock->defaultWarehouseId((int) $order->organization_id);
+        $allocations = OrderItemAllocation::where('order_id', $order->id)
+            ->with(['warehouse:id,name', 'owner:id,name', 'variant:id,sku'])
+            ->orderBy('id')->get();
+
+        if ($allocations->isEmpty() || $target === null) {
+            return null;
+        }
+
+        return [
+            'target_warehouse' => ['id' => $target, 'name' => $stock->warehouseName($target)],
+            'ready' => $stock->isConsolidatedAt($order, $target),
+            'to_move' => $stock->consolidationPlan($order, $target),
+            'allocations' => $allocations->map(fn ($a) => [
+                'id' => $a->id,
+                'sku' => $a->variant?->sku,
+                'warehouse' => $a->warehouse?->name,
+                'owner' => $a->owner?->name,
+                'quantity' => $a->quantity,
+                'open' => $a->open_quantity,
+                'fulfilled' => $a->fulfilled_quantity,
+                'returned' => $a->returned_quantity,
+                'shortfall' => $a->shortfall_quantity,
+            ]),
+            'warehouse_names' => Warehouse::withoutGlobalScopes()->where('organization_id', $order->organization_id)->pluck('name', 'id'),
+            'can_consolidate' => auth()->user()->hasPermission('transfer_stock'),
+        ];
     }
 }

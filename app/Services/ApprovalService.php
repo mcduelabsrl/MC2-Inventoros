@@ -110,7 +110,7 @@ final class ApprovalService
                 throw ApprovalException::invalidState(match (true) {
                     $po->approval_status === PurchaseOrder::APPROVAL_PENDING => "Purchase order {$po->po_number} is already waiting for approval.",
                     $po->approval_status === PurchaseOrder::APPROVAL_APPROVED => "Purchase order {$po->po_number} is already approved.",
-                    $po->status !== PurchaseOrder::STATUS_DRAFT => "Only draft purchase orders can be submitted for approval.",
+                    $po->status !== PurchaseOrder::STATUS_DRAFT => 'Only draft purchase orders can be submitted for approval.',
                     default => "Add at least one item before submitting purchase order {$po->po_number} for approval.",
                 });
             }
@@ -214,12 +214,14 @@ final class ApprovalService
         ?string $reason = null,
         ?string $notes = null,
         ?int $locationId = null,
+        ?int $warehouseId = null,
+        ?int $stockOwnerId = null,
     ): StockAdjustment|StockAdjustmentRequest {
         if ($this->stockAdjustmentNeedsApproval($product, $variant, $quantity)) {
-            return $this->requestStockAdjustment($user, $product, $variant, $quantity, $type, $reason, $notes, $locationId);
+            return $this->requestStockAdjustment($user, $product, $variant, $quantity, $type, $reason, $notes, $locationId, $warehouseId, $stockOwnerId);
         }
 
-        return $this->applyAdjustment($product, $variant, $quantity, $type, $reason, $notes, $locationId, $user, null);
+        return $this->applyAdjustment($product, $variant, $quantity, $type, $reason, $notes, $locationId, $user, null, $warehouseId, $stockOwnerId);
     }
 
     /**
@@ -236,6 +238,8 @@ final class ApprovalService
         ?string $reason = null,
         ?string $notes = null,
         ?int $locationId = null,
+        ?int $warehouseId = null,
+        ?int $stockOwnerId = null,
     ): StockAdjustmentRequest {
         // Refuse up front what could never be approved, so the requester
         // hears it now rather than from the approver later. Approval checks
@@ -245,12 +249,14 @@ final class ApprovalService
             throw new InsufficientStockException('Cannot remove '.abs($quantity)." units; only {$onHand} on hand.");
         }
 
-        $request = DB::transaction(function () use ($user, $product, $variant, $quantity, $type, $reason, $notes, $locationId) {
+        $request = DB::transaction(function () use ($user, $product, $variant, $quantity, $type, $reason, $notes, $locationId, $warehouseId, $stockOwnerId) {
             $request = StockAdjustmentRequest::create([
                 'organization_id' => $product->organization_id,
                 'product_id' => $product->id,
                 'product_variant_id' => $variant?->id,
                 'location_id' => $locationId,
+                'warehouse_id' => $warehouseId,
+                'stock_owner_id' => $stockOwnerId,
                 'requested_by' => $user->id,
                 'type' => $type,
                 'quantity' => $quantity,
@@ -417,6 +423,8 @@ final class ApprovalService
                 $request->location_id,
                 $request->requested_by ? User::find($request->requested_by) : null,
                 $request,
+                $request->warehouse_id,
+                $request->stock_owner_id,
             );
         } catch (InsufficientStockException $e) {
             throw ApprovalException::insufficientStock('Cannot approve this adjustment now: '.lcfirst($e->getMessage()));
@@ -433,6 +441,8 @@ final class ApprovalService
         ?int $locationId,
         ?User $actor,
         ?Model $reference,
+        ?int $warehouseId = null,
+        ?int $stockOwnerId = null,
     ): StockAdjustment {
         if ($variant) {
             return StockAdjustment::adjustVariant(
@@ -444,6 +454,10 @@ final class ApprovalService
                 reference: $reference,
                 allowNegative: false,
                 actor: $actor,
+                // Per-warehouse variant stock: the warehouse (and owner) the
+                // change is for; the default warehouse when none is named.
+                warehouseId: $warehouseId,
+                stockOwnerId: $stockOwnerId,
             );
         }
 

@@ -8,6 +8,7 @@ import Button from '@/Components/ui/Button.vue';
 import Badge from '@/Components/ui/Badge.vue';
 import SendDocumentModal from '@/Components/SendDocumentModal.vue';
 import ShipmentsPanel from '@/Components/Shipping/ShipmentsPanel.vue';
+import VariantStockPanel from '@/Components/Shipping/VariantStockPanel.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { usePermissions } from '@/composables/usePermissions';
@@ -36,6 +37,7 @@ const props = defineProps({
     pluginComponents: Object,
     shipments: { type: Array, default: null },
     shipping: { type: Object, default: null },
+    variantStock: { type: Object, default: null },
 });
 
 // Order amounts in the order's currency, grouped (see lib/money).
@@ -384,6 +386,7 @@ const formatOrderDate = (date, long = false) =>
                     </Card>
 
                     <!-- Shipments (null without view_shipments) -->
+                    <VariantStockPanel v-if="variantStock" :order="order" :panel="variantStock" />
                     <ShipmentsPanel v-if="shipping" :order="order" :shipments="shipments || []" :shipping="shipping" />
 
                     <!-- Customer Information -->

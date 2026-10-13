@@ -135,6 +135,7 @@ const sections = computed(() => [
         id: 'stock',
         label: t('nav.sections.stock'),
         items: [
+            { icon: Boxes, name: t('nav.stockByWarehouse'), href: route('stock-by-warehouse.index'), active: ['stock-by-warehouse.*'], perm: 'view_products' },
             { icon: SlidersHorizontal, name: t('nav.stockAdjustments'), href: route('stock-adjustments.index'), active: ['stock-adjustments.*'], perm: 'manage_stock' },
             { icon: ArrowLeftRight, name: t('nav.stockTransfers'), href: route('stock-transfers.index'), active: ['stock-transfers.*'], perm: 'transfer_stock' },
             { icon: ScanLine, name: t('nav.stockAudits'), href: route('stock-audits.index'), active: ['stock-audits.*'], perm: 'view_stock_audits' },

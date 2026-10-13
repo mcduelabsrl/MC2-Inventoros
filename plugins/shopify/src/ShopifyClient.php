@@ -42,10 +42,23 @@ class ShopifyClient
         // With several locations: ship each order from its assigned location's warehouse.
         'read_assigned_fulfillment_orders',
         'read_merchant_managed_fulfillment_orders',
+        // Stock per warehouse: move an order's fulfilment to the warehouse
+        // its pairs were gathered in.
+        'write_merchant_managed_fulfillment_orders',
+        // Stock per warehouse: read and fix inventory transfers (e.g. the
+        // destination of a draft transfer) and receive their shipments.
+        'read_inventory_transfers',
+        'write_inventory_transfers',
+        'read_inventory_shipments',
+        'write_inventory_shipments',
+        'write_inventory_shipments_received_items',
     ];
 
     /** Webhook topics the plugin subscribes to. orders/updated also covers edits, fulfilments and refunds. */
-    public const WEBHOOK_TOPICS = ['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED'];
+    public const WEBHOOK_TOPICS = ['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED', 'INVENTORY_LEVELS_UPDATE'];
+
+    /** Every quantity name of an inventory level. */
+    public const QUANTITY_NAMES = ['available', 'on_hand', 'committed', 'reserved', 'damaged', 'quality_control', 'safety_stock', 'incoming'];
 
     /** Fields of an order, for reconciliation and recovery (see OrderPayload). */
     public const ORDER_FIELDS = 'id legacyResourceId name email note createdAt processedAt updatedAt cancelledAt currencyCode displayFinancialStatus totalReceivedSet { shopMoney { amount } } '
@@ -54,7 +67,7 @@ class ShopifyClient
         .'lineItems(first: 50) { nodes { id sku name quantity currentQuantity variant { id } originalUnitPriceSet { shopMoney { amount } } '
         .'discountAllocations { allocatedAmountSet { shopMoney { amount } } } taxLines { priceSet { shopMoney { amount } } } } pageInfo { hasNextPage } } '
         .'shippingLines(first: 10) { nodes { originalPriceSet { shopMoney { amount } } discountedPriceSet { shopMoney { amount } } } } '
-        .'refunds { id createdAt totalRefundedSet { shopMoney { amount } } refundLineItems(first: 50) { nodes { quantity restockType lineItem { id sku } } pageInfo { hasNextPage } } } '
+        .'refunds { id createdAt totalRefundedSet { shopMoney { amount } } refundLineItems(first: 50) { nodes { quantity restockType location { id } lineItem { id sku } } pageInfo { hasNextPage } } } '
         .'fulfillments { id status displayStatus createdAt location { id } trackingInfo { company number url } '
         .'fulfillmentLineItems(first: 50) { nodes { quantity lineItem { id sku } } pageInfo { hasNextPage } } }';
 
@@ -497,6 +510,495 @@ class ShopifyClient
         }
 
         return array_values(array_diff(self::WEBHOOK_TOPICS, $present));
+    }
+
+    // ------------------------------------------------------------------
+    // Stock per warehouse (2.0)
+    // ------------------------------------------------------------------
+
+    /**
+     * Every quantity of the given inventory items at the given locations.
+     *
+     * @param  array<int, string>  $itemIds  inventory item gids
+     * @param  array<int, string>  $locationIds  location gids
+     * @return array<string, array<string, array{quantities: array<string, int>, updated_at: string|null}>> item gid => location gid => level; a missing location means the item is not stocked there
+     */
+    public function inventoryLevels(array $itemIds, array $locationIds): array
+    {
+        $levels = $this->levelAliases($locationIds);
+        $out = [];
+
+        foreach (array_chunk(array_values(array_unique($itemIds)), 50) as $chunk) {
+            $data = $this->graphql(
+                'query Levels($ids: [ID!]!) { nodes(ids: $ids) { ... on InventoryItem { id'.$levels.' } } }',
+                ['ids' => array_map(fn ($id) => self::gid('InventoryItem', $id), $chunk)],
+            );
+
+            foreach ((array) ($data['nodes'] ?? []) as $node) {
+                if (is_array($node) && isset($node['id'])) {
+                    $out[(string) $node['id']] = self::levelsOf($node);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every inventory item of the store with its variant and its quantities
+     * at the given locations, page by page.
+     *
+     * @param  array<int, string>  $locationIds
+     * @return \Generator<int, array{inventory_item_id: string, sku: string|null, tracked: bool, variant_id: string|null, levels: array<string, array{quantities: array<string, int>, updated_at: string|null}>}>
+     */
+    public function allInventoryLevels(array $locationIds): \Generator
+    {
+        $query = 'query InventoryItems($first: Int!, $cursor: String) { inventoryItems(first: $first, after: $cursor) { nodes { id sku tracked variants(first: 1) { nodes { id legacyResourceId } }'
+            .$this->levelAliases($locationIds).' } pageInfo { hasNextPage endCursor } } }';
+
+        foreach ($this->paginate($query, 'inventoryItems', [], first: 100) as $node) {
+            yield [
+                'inventory_item_id' => (string) $node['id'],
+                'sku' => isset($node['sku']) && $node['sku'] !== '' ? (string) $node['sku'] : null,
+                'tracked' => (bool) ($node['tracked'] ?? true),
+                'variant_id' => isset($node['variants']['nodes'][0]['legacyResourceId']) ? (string) $node['variants']['nodes'][0]['legacyResourceId'] : null,
+                'levels' => self::levelsOf($node),
+            ];
+        }
+    }
+
+    private function levelAliases(array $locationIds): string
+    {
+        $names = json_encode(self::QUANTITY_NAMES);
+        $levels = '';
+        foreach (array_values($locationIds) as $i => $locationId) {
+            $levels .= ' l'.$i.': inventoryLevel(locationId: '.json_encode((string) $locationId, JSON_UNESCAPED_SLASHES).') { updatedAt location { id } quantities(names: '.$names.') { name quantity } }';
+        }
+
+        return $levels;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array<string, array{quantities: array<string, int>, updated_at: string|null}>
+     */
+    private static function levelsOf(array $node): array
+    {
+        $out = [];
+        foreach ($node as $key => $level) {
+            if (! preg_match('/^l\d+$/', (string) $key) || ! is_array($level) || ! isset($level['location']['id'])) {
+                continue;
+            }
+            $quantities = array_fill_keys(self::QUANTITY_NAMES, 0);
+            foreach ((array) ($level['quantities'] ?? []) as $q) {
+                if (is_array($q) && isset($q['name'])) {
+                    $quantities[(string) $q['name']] = (int) ($q['quantity'] ?? 0);
+                }
+            }
+            $out[(string) $level['location']['id']] = ['quantities' => $quantities, 'updated_at' => $level['updatedAt'] ?? null];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Change one quantity name by deltas (inventoryAdjustQuantities), with
+     * compare-and-swap (changeFromQuantity) and an idempotency key.
+     *
+     * @param  array<int, array{inventory_item_id: string, location_id: string, delta: int, change_from: int|null, ledger_uri?: string|null}>  $changes
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    public function adjustQuantities(string $name, string $reason, array $changes, string $idempotencyKey, string $referenceUri): array
+    {
+        $input = [
+            'name' => $name,
+            'reason' => $reason,
+            'referenceDocumentUri' => $referenceUri,
+            'changes' => array_map(fn (array $c) => array_filter([
+                'inventoryItemId' => self::gid('InventoryItem', $c['inventory_item_id']),
+                'locationId' => self::gid('Location', $c['location_id']),
+                'delta' => (int) $c['delta'],
+                'changeFromQuantity' => $c['change_from'],
+                // Required for every name but "available".
+                'ledgerDocumentUri' => $name === 'available' ? null : ($c['ledger_uri'] ?? $referenceUri),
+            ], fn ($v, $k) => $v !== null || $k === 'changeFromQuantity', ARRAY_FILTER_USE_BOTH), array_values($changes)),
+        ];
+
+        $data = $this->graphql(
+            'mutation Adjust($input: InventoryAdjustQuantitiesInput!, $key: String!) { inventoryAdjustQuantities(input: $input) @idempotent(key: $key) { inventoryAdjustmentGroup { id changes { name delta quantityAfterChange item { id } location { id } } } userErrors { field message code } } }',
+            ['input' => $input, 'key' => $idempotencyKey],
+        );
+
+        return self::adjustmentResult($data['inventoryAdjustQuantities'] ?? []);
+    }
+
+    /**
+     * Move units between quantity names at a location (e.g. available to
+     * quality_control), with compare-and-swap on the source.
+     *
+     * @param  array<int, array{inventory_item_id: string, location_id: string, quantity: int, from: string, to: string, change_from: int|null}>  $changes
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    public function moveQuantities(string $reason, array $changes, string $idempotencyKey, string $referenceUri): array
+    {
+        $input = [
+            'reason' => $reason,
+            'referenceDocumentUri' => $referenceUri,
+            'changes' => array_map(fn (array $c) => [
+                'inventoryItemId' => self::gid('InventoryItem', $c['inventory_item_id']),
+                'quantity' => (int) $c['quantity'],
+                'from' => array_filter([
+                    'locationId' => self::gid('Location', $c['location_id']),
+                    'name' => $c['from'],
+                    'changeFromQuantity' => $c['change_from'],
+                    'ledgerDocumentUri' => $c['from'] === 'available' ? null : $referenceUri,
+                ], fn ($v, $k) => $v !== null || $k === 'changeFromQuantity', ARRAY_FILTER_USE_BOTH),
+                'to' => array_filter([
+                    'locationId' => self::gid('Location', $c['location_id']),
+                    'name' => $c['to'],
+                    'changeFromQuantity' => null,
+                    'ledgerDocumentUri' => $c['to'] === 'available' ? null : $referenceUri,
+                ], fn ($v, $k) => $v !== null || $k === 'changeFromQuantity', ARRAY_FILTER_USE_BOTH),
+            ], array_values($changes)),
+        ];
+
+        $data = $this->graphql(
+            'mutation Move($input: InventoryMoveQuantitiesInput!, $key: String!) { inventoryMoveQuantities(input: $input) @idempotent(key: $key) { inventoryAdjustmentGroup { id changes { name delta quantityAfterChange item { id } location { id } } } userErrors { field message code } } }',
+            ['input' => $input, 'key' => $idempotencyKey],
+        );
+
+        return self::adjustmentResult($data['inventoryMoveQuantities'] ?? []);
+    }
+
+    /**
+     * Set one quantity name to absolute figures, refused when the current
+     * figure is no longer the one given (an operator's count).
+     *
+     * @param  array<int, array{inventory_item_id: string, location_id: string, quantity: int, change_from: int|null}>  $quantities
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    public function setQuantities(string $name, string $reason, array $quantities, string $idempotencyKey, string $referenceUri): array
+    {
+        $input = [
+            'name' => $name,
+            'reason' => $reason,
+            'referenceDocumentUri' => $referenceUri,
+            'quantities' => array_map(fn (array $q) => [
+                'inventoryItemId' => self::gid('InventoryItem', $q['inventory_item_id']),
+                'locationId' => self::gid('Location', $q['location_id']),
+                'quantity' => (int) $q['quantity'],
+                'changeFromQuantity' => $q['change_from'],
+            ], array_values($quantities)),
+        ];
+
+        $data = $this->graphql(
+            'mutation SetQ($input: InventorySetQuantitiesInput!, $key: String!) { inventorySetQuantities(input: $input) @idempotent(key: $key) { inventoryAdjustmentGroup { id changes { name delta quantityAfterChange item { id } location { id } } } userErrors { field message code } } }',
+            ['input' => $input, 'key' => $idempotencyKey],
+        );
+
+        return self::adjustmentResult($data['inventorySetQuantities'] ?? []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    private static function adjustmentResult(array $payload): array
+    {
+        $group = $payload['inventoryAdjustmentGroup'] ?? null;
+
+        return [
+            'group_id' => is_array($group) ? ($group['id'] ?? null) : null,
+            'changes' => array_map(fn ($c) => [
+                'name' => $c['name'] ?? null,
+                'delta' => (int) ($c['delta'] ?? 0),
+                'quantity_after' => isset($c['quantityAfterChange']) ? (int) $c['quantityAfterChange'] : null,
+                'inventory_item_id' => $c['item']['id'] ?? null,
+                'location_id' => $c['location']['id'] ?? null,
+            ], is_array($group) ? (array) ($group['changes'] ?? []) : []),
+            'errors' => array_map(fn ($e) => [
+                'code' => $e['code'] ?? null,
+                'message' => (string) ($e['message'] ?? 'Unknown error'),
+                'field' => $e['field'] ?? null,
+            ], (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * An order's open fulfilment orders and, for each line, how many units
+     * are still to be fulfilled from which location.
+     *
+     * @return list<array{id: string, status: string, request_status: string|null, location_id: string|null, lines: list<array{id: string, line_item_id: string, inventory_item_id: string|null, variant_id: string|null, remaining: int}>}>
+     */
+    public function fulfillmentOrders(string $orderId): array
+    {
+        $data = $this->graphql(
+            'query FulfillmentOrders($id: ID!) { order(id: $id) { id fulfillmentOrders(first: 20) { nodes { id status requestStatus assignedLocation { location { id } } lineItems(first: 50) { nodes { id remainingQuantity totalQuantity inventoryItemId lineItem { id } variant { id } } } } } } }',
+            ['id' => self::gid('Order', $orderId)],
+        );
+
+        $out = [];
+        foreach ((array) ($data['order']['fulfillmentOrders']['nodes'] ?? []) as $node) {
+            if (! is_array($node) || in_array($node['status'] ?? '', ['CANCELLED', 'CLOSED'], true)) {
+                continue;
+            }
+            $lines = [];
+            foreach ((array) ($node['lineItems']['nodes'] ?? []) as $line) {
+                $lines[] = [
+                    'id' => (string) $line['id'],
+                    'line_item_id' => self::legacyId($line['lineItem']['id'] ?? ''),
+                    'inventory_item_id' => isset($line['inventoryItemId']) ? (string) $line['inventoryItemId'] : null,
+                    'variant_id' => isset($line['variant']['id']) ? self::legacyId($line['variant']['id']) : null,
+                    'remaining' => (int) ($line['remainingQuantity'] ?? 0),
+                ];
+            }
+            $out[] = [
+                'id' => (string) $node['id'],
+                'status' => (string) ($node['status'] ?? ''),
+                'request_status' => $node['requestStatus'] ?? null,
+                'location_id' => $node['assignedLocation']['location']['id'] ?? null,
+                'lines' => $lines,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Fulfil fulfilment order lines (the units leave), with tracking.
+     *
+     * @param  array<string, array<int, array{id: string, quantity: int}>>  $linesByFulfillmentOrder  fulfilment order gid => its lines
+     * @param  array{company?: string|null, number?: string|null, url?: string|null}  $tracking
+     * @return array{id: string|null, legacy_id: string|null, errors: array<int, string>}
+     */
+    public function createFulfillment(array $linesByFulfillmentOrder, array $tracking, bool $notifyCustomer): array
+    {
+        $fulfillment = [
+            'notifyCustomer' => $notifyCustomer,
+            'lineItemsByFulfillmentOrder' => array_map(fn ($foId, $lines) => [
+                'fulfillmentOrderId' => $foId,
+                'fulfillmentOrderLineItems' => array_map(fn ($l) => ['id' => $l['id'], 'quantity' => (int) $l['quantity']], array_values($lines)),
+            ], array_keys($linesByFulfillmentOrder), array_values($linesByFulfillmentOrder)),
+        ];
+
+        $tracking = array_filter([
+            'company' => $tracking['company'] ?? null,
+            'number' => $tracking['number'] ?? null,
+            'url' => $tracking['url'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+        if ($tracking !== []) {
+            $fulfillment['trackingInfo'] = $tracking;
+        }
+
+        $data = $this->graphql(
+            'mutation CreateFulfillment($fulfillment: FulfillmentInput!) { fulfillmentCreate(fulfillment: $fulfillment) { fulfillment { id legacyResourceId status location { id } } userErrors { field message } } }',
+            ['fulfillment' => $fulfillment],
+        );
+        $payload = $data['fulfillmentCreate'] ?? [];
+
+        return [
+            'id' => $payload['fulfillment']['id'] ?? null,
+            'legacy_id' => isset($payload['fulfillment']['legacyResourceId']) ? (string) $payload['fulfillment']['legacyResourceId'] : null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * Assign some units of a fulfilment order to another location.
+     *
+     * @param  array<int, array{id: string, quantity: int}>  $lines  fulfilment order line items
+     * @return array{moved_id: string|null, errors: array<int, string>}
+     */
+    public function moveFulfillmentOrder(string $fulfillmentOrderId, string $locationId, array $lines): array
+    {
+        $data = $this->graphql(
+            'mutation MoveFO($id: ID!, $newLocationId: ID!, $lineItems: [FulfillmentOrderLineItemInput!]) { fulfillmentOrderMove(id: $id, newLocationId: $newLocationId, fulfillmentOrderLineItems: $lineItems) { movedFulfillmentOrder { id status assignedLocation { location { id } } } originalFulfillmentOrder { id status } remainingFulfillmentOrder { id } userErrors { field message } } }',
+            [
+                'id' => $fulfillmentOrderId,
+                'newLocationId' => self::gid('Location', $locationId),
+                'lineItems' => array_map(fn ($l) => ['id' => $l['id'], 'quantity' => (int) $l['quantity']], array_values($lines)),
+            ],
+        );
+
+        $payload = $data['fulfillmentOrderMove'] ?? [];
+
+        return [
+            'moved_id' => $payload['movedFulfillmentOrder']['id'] ?? null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * An inventory transfer by its name (e.g. "#T0001") with its lines and
+     * shipments, or null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function inventoryTransfer(string $name): ?array
+    {
+        $data = $this->graphql(
+            'query Transfers($query: String!) { inventoryTransfers(first: 5, query: $query) { nodes { id name status referenceName dateCreated totalQuantity receivedQuantity origin { name location { id } } destination { name location { id } } lineItems(first: 100) { nodes { id title totalQuantity shippedQuantity processableQuantity inventoryItem { id sku } } } shipments(first: 10) { nodes { id name status lineItems(first: 100) { nodes { id quantity unreceivedQuantity acceptedQuantity rejectedQuantity inventoryItem { id sku } } } } } } } }',
+            ['query' => ltrim($name, '#')],
+        );
+
+        foreach ((array) ($data['inventoryTransfers']['nodes'] ?? []) as $node) {
+            if (is_array($node) && ltrim((string) ($node['name'] ?? ''), '#') === ltrim($name, '#')) {
+                return $node;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Change the destination of a transfer (Shopify allows it on drafts).
+     *
+     * @return array<int, string> errors
+     */
+    public function editTransferDestination(string $transferId, string $locationId): array
+    {
+        $data = $this->graphql(
+            'mutation EditTransfer($id: ID!, $input: InventoryTransferEditInput!) { inventoryTransferEdit(id: $id, input: $input) { inventoryTransfer { id status destination { location { id } } } userErrors { field message code } } }',
+            ['id' => $transferId, 'input' => ['destinationId' => self::gid('Location', $locationId)]],
+        );
+
+        return array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($data['inventoryTransferEdit']['userErrors'] ?? []));
+    }
+
+    /**
+     * Create a transfer ready to ship: Shopify commits its units at the
+     * origin.
+     *
+     * @param  array<int, array{inventory_item_id: string, quantity: int}>  $lines
+     * @return array{id: string|null, name: string|null, errors: array<int, string>}
+     */
+    public function createTransferReadyToShip(string $originId, string $destinationId, array $lines, string $referenceName, ?string $note, string $idempotencyKey): array
+    {
+        $data = $this->graphql(
+            'mutation CreateTransfer($input: InventoryTransferCreateAsReadyToShipInput!, $key: String!) { inventoryTransferCreateAsReadyToShip(input: $input) @idempotent(key: $key) { inventoryTransfer { id name status } userErrors { field message code } } }',
+            ['input' => array_filter([
+                'originLocationId' => self::gid('Location', $originId),
+                'destinationLocationId' => self::gid('Location', $destinationId),
+                'referenceName' => $referenceName,
+                'note' => $note,
+                'lineItems' => array_map(fn ($l) => ['inventoryItemId' => self::gid('InventoryItem', $l['inventory_item_id']), 'quantity' => (int) $l['quantity']], array_values($lines)),
+            ], fn ($v) => $v !== null), 'key' => $idempotencyKey],
+        );
+        $payload = $data['inventoryTransferCreateAsReadyToShip'] ?? [];
+
+        return [
+            'id' => $payload['inventoryTransfer']['id'] ?? null,
+            'name' => $payload['inventoryTransfer']['name'] ?? null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * Ship a transfer: a shipment in transit (the units leave the origin and
+     * are incoming at the destination).
+     *
+     * @param  array<int, array{inventory_item_id: string, quantity: int}>  $lines
+     * @param  array{company?: string|null, number?: string|null}  $tracking
+     * @return array{id: string|null, lines: array<string, string>, errors: array<int, string>} lines: inventory item gid => shipment line gid
+     */
+    public function createShipmentInTransit(string $transferId, array $lines, array $tracking, string $idempotencyKey): array
+    {
+        $tracking = array_filter(['company' => $tracking['company'] ?? null, 'trackingNumber' => $tracking['number'] ?? null], fn ($v) => $v !== null && $v !== '');
+        $input = [
+            'movementId' => $transferId,
+            'lineItems' => array_map(fn ($l) => ['inventoryItemId' => self::gid('InventoryItem', $l['inventory_item_id']), 'quantity' => (int) $l['quantity']], array_values($lines)),
+        ];
+        if ($tracking !== []) {
+            $input['trackingInput'] = $tracking;
+        }
+
+        $data = $this->graphql(
+            'mutation ShipTransfer($input: InventoryShipmentCreateInput!, $key: String!) { inventoryShipmentCreateInTransit(input: $input) @idempotent(key: $key) { inventoryShipment { id name status lineItems(first: 100) { nodes { id quantity inventoryItem { id } } } } userErrors { field message code } } }',
+            ['input' => $input, 'key' => $idempotencyKey],
+        );
+        $payload = $data['inventoryShipmentCreateInTransit'] ?? [];
+
+        $byItem = [];
+        foreach ((array) ($payload['inventoryShipment']['lineItems']['nodes'] ?? []) as $node) {
+            if (isset($node['inventoryItem']['id'], $node['id'])) {
+                $byItem[(string) $node['inventoryItem']['id']] = (string) $node['id'];
+            }
+        }
+
+        return [
+            'id' => $payload['inventoryShipment']['id'] ?? null,
+            'lines' => $byItem,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * Cancel a transfer (releases what it held at the origin).
+     *
+     * @return array<int, string> errors
+     */
+    public function cancelTransfer(string $transferId): array
+    {
+        $data = $this->graphql(
+            'mutation CancelTransfer($id: ID!) { inventoryTransferCancel(id: $id) { inventoryTransfer { id status } userErrors { field message code } } }',
+            ['id' => $transferId],
+        );
+
+        return array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($data['inventoryTransferCancel']['userErrors'] ?? []));
+    }
+
+    /**
+     * Copy a transfer into a new draft.
+     *
+     * @return array{id: string|null, name: string|null, errors: array<int, string>}
+     */
+    public function duplicateTransfer(string $transferId): array
+    {
+        $data = $this->graphql(
+            'mutation DuplicateTransfer($id: ID!) { inventoryTransferDuplicate(id: $id) { inventoryTransfer { id name status } userErrors { field message code } } }',
+            ['id' => $transferId],
+        );
+        $payload = $data['inventoryTransferDuplicate'] ?? [];
+
+        return [
+            'id' => $payload['inventoryTransfer']['id'] ?? null,
+            'name' => $payload['inventoryTransfer']['name'] ?? null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * @return array<int, string> errors
+     */
+    public function markTransferReady(string $transferId, string $idempotencyKey): array
+    {
+        $data = $this->graphql(
+            'mutation ReadyTransfer($id: ID!, $key: String!) { inventoryTransferMarkAsReadyToShip(id: $id) @idempotent(key: $key) { inventoryTransfer { id status } userErrors { field message code } } }',
+            ['id' => $transferId, 'key' => $idempotencyKey],
+        );
+
+        return array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($data['inventoryTransferMarkAsReadyToShip']['userErrors'] ?? []));
+    }
+
+    /**
+     * Receive shipment lines, each accepted (into the destination's
+     * available) or rejected (not added there).
+     *
+     * @param  array<int, array{id: string, quantity: int, reason: 'ACCEPTED'|'REJECTED'}>  $lines
+     * @return array<int, string> errors
+     */
+    public function receiveShipment(string $shipmentId, array $lines, string $idempotencyKey): array
+    {
+        $data = $this->graphql(
+            'mutation ReceiveShipment($id: ID!, $lineItems: [InventoryShipmentReceiveItemInput!], $key: String!) { inventoryShipmentReceive(id: $id, lineItems: $lineItems) @idempotent(key: $key) { inventoryShipment { id status } userErrors { field message code } } }',
+            [
+                'id' => $shipmentId,
+                'lineItems' => array_map(fn ($l) => ['shipmentLineItemId' => $l['id'], 'quantity' => (int) $l['quantity'], 'reason' => $l['reason']], array_values($lines)),
+                'key' => $idempotencyKey,
+            ],
+        );
+
+        return array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($data['inventoryShipmentReceive']['userErrors'] ?? []));
     }
 
     /**

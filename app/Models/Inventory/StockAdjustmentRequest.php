@@ -60,6 +60,8 @@ class StockAdjustmentRequest extends Model
         'product_id',
         'product_variant_id',
         'location_id',
+        'warehouse_id',
+        'stock_owner_id',
         'requested_by',
         'type',
         'quantity',

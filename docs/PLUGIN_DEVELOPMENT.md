@@ -275,6 +275,7 @@ add_action('stock_changed', function ($product, $variant, array $change) {
 | `variant_updated` | `$variant`, `$user` | A product variant is edited on any surface, once per transaction, after commit. Stock moves alone fire `stock_changed` instead. |
 | `variant_deleted` | `$variant`, `$user` | A product variant is deleted on any surface, after commit. |
 | `stock_changed` | `$product`, `$variant`, `$change` | A product's or variant's on-hand stock, or one of the product's location bins, changed on any surface (adjustments, orders, receipts, transfers, returns, audits, imports, commands). Once per product or variant per transaction, after commit. See [Domain change hooks](#domain-change-hooks). |
+| `variant_stock_changed` | `$operation` | An operation on per-warehouse variant stock was committed (adjustment, count, order commitment/release/fulfilment, transfer, return, inspection, owner change, channel sync). `$operation->source` is `local`, `external` (reported by a sales channel: never send it back) or `import`; `$operation->movements` lists each variant, warehouse, owner, bucket and delta. Only for organizations with per-warehouse variant stock on. |
 | `stock_adjusted` | `$stock_adjustment`, `$product` | A stock adjustment is committed. `$product` is null for a variant adjustment. |
 | `low_stock_alert` | `$product` | A product's stock drops to or below its minimum. |
 | `out_of_stock_alert` | `$product` | A product's stock reaches zero. |
@@ -341,6 +342,9 @@ A filter callback receives the value first, then the listed context, and must re
 
 | Filter | Arguments | What it changes |
 |--------|-----------|-----------------|
+| `variant_stock_channel_status` | `$statuses`, `$organization_id`, `$variant_ids` | Sync status of per-warehouse variant stock with a sales channel, shown on the Stock by warehouse screen. Return `$statuses` with `[variant_id][warehouse_id] => ['channel', 'status' (synced, pending, error, conflict, unmapped, paused), 'detail', 'last_synced_at']`. A pending status must never be shown as confirmed. |
+| `variant_stock_channel_issues` | `$issues`, `$organization_id`, `$variant_id` | Open stock sync issues a sales channel wants an operator to decide, listed as anomalies on the Stock by warehouse screen: `['id', 'channel', 'kind', 'message', 'product_variant_id', 'warehouse_id', 'created_at', 'actions' => [['label', 'url']]]`; the URLs are POSTed. `$variant_id` is null for all variants. |
+| `shipment_customer_email` | `$send`, `$shipment` | Whether Inventoros emails the customer when a shipment that asks for it (`notify_customer`) first leaves. Return false when another system, such as the sales channel the order came from, notifies the customer instead, so they get one mail. |
 | `product_display_name` | `$name`, `$product` | The product name shown on the product list and detail pages, in global search and as `display_name` in the REST product resource. The stored `name` is unchanged. |
 | `product_price_display` | `$price`, `$product` | The price shown on the product list and detail pages and as `display_price` in the REST product resource. `$price` is a float (or null). The stored `price`, order pricing and reports are unchanged. |
 | `product_search_query` | `$query`, `$search_term` | Product search on the product list, global search and `GET /api/v1/products?search=`. `$query` is the nested group of OR conditions that match the term: add alternatives with `orWhere()`. Tenant and other filters sit outside the group, so a plugin cannot widen them. |
