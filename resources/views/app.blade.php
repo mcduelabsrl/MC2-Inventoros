@@ -7,11 +7,11 @@
 
         <title data-inertia>{{ config('app.name', 'Inventoros') }}</title>
 
-        <!-- Favicon & app icons -->
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" type="image/png" sizes="32x32" href="/images/brand/favicon-32.png">
-        <link rel="icon" type="image/png" sizes="16x16" href="/images/brand/favicon-16.png">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <!-- Favicon & app icons (?v= makes browsers fetch them again when they change) -->
+        <link rel="icon" href="/favicon.ico?v=saxone-1" sizes="any">
+        <link rel="icon" type="image/png" sizes="32x32" href="/images/brand/favicon-32.png?v=saxone-1">
+        <link rel="icon" type="image/png" sizes="16x16" href="/images/brand/favicon-16.png?v=saxone-1">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=saxone-1">
         <meta name="theme-color" content="#2563eb">
 
         <!-- Fonts -->
