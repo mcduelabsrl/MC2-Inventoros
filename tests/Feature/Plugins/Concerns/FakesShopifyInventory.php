@@ -84,6 +84,7 @@ trait FakesShopifyInventory
                 str_contains($query, 'query FulfillmentOrders(') => ['data' => ['order' => ['id' => $variables['id'], 'fulfillmentOrders' => ['nodes' => $this->fos[$this->legacy($variables['id'])] ?? []]]]],
                 str_contains($query, 'fulfillmentCreate(') => ['data' => ['fulfillmentCreate' => $this->createFulfillmentQ($variables['fulfillment'])]],
                 str_contains($query, 'fulfillmentOrderMove(') => ['data' => ['fulfillmentOrderMove' => $this->moveFo($variables)]],
+                str_contains($query, 'inventoryActivate(') => ['data' => ['inventoryActivate' => $this->activateQ($variables)]],
                 str_contains($query, 'query Transfers(') => ['data' => ['inventoryTransfers' => ['nodes' => array_values(array_filter($this->transfers, fn ($t) => ltrim($t['name'], '#') === ltrim((string) $variables['query'], '#')))]]],
                 str_contains($query, 'inventoryTransferEdit(') => ['data' => ['inventoryTransferEdit' => $this->editTransfer($variables)]],
                 str_contains($query, 'inventoryShipmentReceive(') => ['data' => ['inventoryShipmentReceive' => $this->receiveShipment($variables)]],
@@ -291,6 +292,12 @@ trait FakesShopifyInventory
                 }
                 $from = $fo['assignedLocation']['location']['id'];
                 $to = $variables['newLocationId'];
+                // As Shopify: only to a location where the items are stocked.
+                foreach ($fo['lineItems']['nodes'] as $line) {
+                    if (! isset($this->inv[$line['inventoryItemId']][$to])) {
+                        return ['movedFulfillmentOrder' => null, 'originalFulfillmentOrder' => null, 'remainingFulfillmentOrder' => null, 'userErrors' => [['field' => ['newLocationId'], 'message' => 'None of the items are stocked at the new location.']]];
+                    }
+                }
                 $moved = ['id' => $fo['id'].'-moved', 'status' => 'OPEN', 'requestStatus' => 'UNSUBMITTED', 'assignedLocation' => ['location' => ['id' => $to]], 'lineItems' => ['nodes' => []]];
 
                 foreach ($variables['lineItems'] ?? [] as $want) {
@@ -317,6 +324,16 @@ trait FakesShopifyInventory
         }
 
         return ['movedFulfillmentOrder' => null, 'originalFulfillmentOrder' => null, 'remainingFulfillmentOrder' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Fulfillment order not found']]];
+    }
+
+    /**
+     * Stock an item at a location (a level at zero); nothing if it is.
+     */
+    private function activateQ(array $variables): array
+    {
+        $this->inv[$variables['inventoryItemId']][$variables['locationId']] ??= array_fill_keys(['available', 'committed', 'reserved', 'damaged', 'quality_control', 'safety_stock', 'incoming'], 0);
+
+        return ['inventoryLevel' => ['id' => 'gid://shopify/InventoryLevel/1'], 'userErrors' => []];
     }
 
     private function legacy(string $id): string
