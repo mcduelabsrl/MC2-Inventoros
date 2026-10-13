@@ -10,6 +10,7 @@ use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * An immediate move of variant units from one warehouse to another,
@@ -29,7 +30,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $channel_status
  * @property string|null $channel_error
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $completed_at
+ * @property Carbon|null $completed_at
  */
 class VariantStockTransfer extends Model
 {

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Inventoros\Plugins\Shopify\Stock;
 
 use App\Enums\OrderStatus;
+use App\Models\Inventory\VariantStockLevel;
 use App\Models\Order\Order;
-use App\Models\Order\OrderItemAllocation;
 use App\Services\Inventory\VariantStockService;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\OrderImporter;
@@ -90,7 +90,7 @@ class RoutingCheck
 
     private function freeAt(int $variantId, int $warehouseId): int
     {
-        $levels = \App\Models\Inventory\VariantStockLevel::where('product_variant_id', $variantId)->where('warehouse_id', $warehouseId)->get();
+        $levels = VariantStockLevel::where('product_variant_id', $variantId)->where('warehouse_id', $warehouseId)->get();
 
         return (int) $levels->sum(fn ($l) => $l->available);
     }

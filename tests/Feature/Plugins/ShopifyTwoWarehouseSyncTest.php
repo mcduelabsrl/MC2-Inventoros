@@ -20,6 +20,7 @@ use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryLevel;
+use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
 use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
@@ -149,7 +150,7 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
             'customer_name' => 'Cliente', 'external_id' => '5001', 'external_reference' => '#5001',
             'items' => [['product_id' => $this->shoe->id, 'product_variant_id' => $this->size43->id, 'quantity' => 1, 'unit_price' => 159]],
         ], $this->admin, 'shopify', adjustStock: false);
-        \Inventoros\Plugins\Shopify\Models\ShopifyOrder::query()->create([
+        ShopifyOrder::query()->create([
             'organization_id' => $this->org->id, 'shopify_order_id' => '5001', 'order_id' => $order->id, 'status' => 'imported', 'payload' => '{}',
         ]);
         $this->shopifySale(self::I43, self::SAX, 1);

@@ -511,7 +511,6 @@ class ShopifyClient
         return array_values(array_diff(self::WEBHOOK_TOPICS, $present));
     }
 
-
     // ------------------------------------------------------------------
     // Stock per warehouse (2.0)
     // ------------------------------------------------------------------

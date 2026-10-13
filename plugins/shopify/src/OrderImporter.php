@@ -14,14 +14,15 @@ use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\VariantStockOperation;
 use App\Models\Order\Order;
+use App\Models\Order\ReturnOrder;
 use App\Models\Scopes\OrganizationScope;
 use App\Models\Shipping\Shipment;
 use App\Models\User;
+use App\Services\Inventory\VariantStockService;
 use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\Organizations\ActiveOrganization;
 use App\Services\ReturnOrderService;
-use App\Services\Inventory\VariantStockService;
 use App\Services\Shipping\ShipmentService;
 use App\Support\Money;
 use App\Support\VariantWarehouseStockSettings;
@@ -892,7 +893,6 @@ class OrderImporter
         return $variantId === null ? "p{$productId}" : "v{$variantId}";
     }
 
-
     // ------------------------------------------------------------------
     // Stock per warehouse
     // ------------------------------------------------------------------
@@ -1031,7 +1031,7 @@ class OrderImporter
      * @param  array<int, array<string, mixed>>  $refundLines
      * @param  array<string, array{product_id: int, product_variant_id: int|null}>  $lines
      */
-    private function noteChannelRestock(ShopifyConnection $connection, \App\Models\Order\ReturnOrder $return, array $refundLines, array $lines): void
+    private function noteChannelRestock(ShopifyConnection $connection, ReturnOrder $return, array $refundLines, array $lines): void
     {
         if (! VariantWarehouseStockSettings::enabledFor((int) $connection->organization_id)) {
             return;

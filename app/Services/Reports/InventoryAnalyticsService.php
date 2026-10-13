@@ -7,6 +7,7 @@ namespace App\Services\Reports;
 use App\Models\Auth\Organization;
 use App\Models\Inventory\Product;
 use App\Support\CurrencyTotals;
+use App\Support\VariantWarehouseStockSettings;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
@@ -233,19 +234,26 @@ class InventoryAnalyticsService
             ->groupBy('order_items.product_id')
             ->selectRaw('order_items.product_id as product_id, SUM(order_items.quantity) as units_sold, '.self::LINE_COST_AGGREGATES);
 
+        // A product sold by variant moves through its variants' ledger rows
+        // (its own stock column is not used); any other product through its
+        // own rows.
         $adjustments = DB::table('stock_adjustments')
-            ->where('organization_id', $organizationId)
-            ->whereNull('product_variant_id')
-            ->where('created_at', '>=', $period->from)
-            ->groupBy('product_id')
+            ->join('products as adj_products', 'adj_products.id', '=', 'stock_adjustments.product_id')
+            ->where('stock_adjustments.organization_id', $organizationId)
+            ->where(fn (Builder $q) => $q
+                ->where(fn (Builder $q) => $q->whereNull('stock_adjustments.product_variant_id')->where('adj_products.has_variants', false))
+                ->orWhere(fn (Builder $q) => $q->whereNotNull('stock_adjustments.product_variant_id')->where('adj_products.has_variants', true)))
+            ->where('stock_adjustments.created_at', '>=', $period->from)
+            ->groupBy('stock_adjustments.product_id')
             ->selectRaw(
-                'product_id,
-                SUM(CASE WHEN created_at > ? THEN adjustment_quantity ELSE 0 END) as after_net,
-                SUM(CASE WHEN created_at <= ? THEN adjustment_quantity ELSE 0 END) as within_net',
+                'stock_adjustments.product_id as product_id,
+                SUM(CASE WHEN stock_adjustments.created_at > ? THEN stock_adjustments.adjustment_quantity ELSE 0 END) as after_net,
+                SUM(CASE WHEN stock_adjustments.created_at <= ? THEN stock_adjustments.adjustment_quantity ELSE 0 END) as within_net',
                 [$period->to, $period->to]
             );
 
-        $closing = '(products.stock - COALESCE(adj.after_net, 0))';
+        $stock = Product::effectiveStockSql('products');
+        $closing = "({$stock} - COALESCE(adj.after_net, 0))";
         $opening = "({$closing} - COALESCE(adj.within_net, 0))";
         $closingClamped = "(CASE WHEN {$closing} < 0 THEN 0 ELSE {$closing} END)";
         $openingClamped = "(CASE WHEN {$opening} < 0 THEN 0 ELSE {$opening} END)";
@@ -259,7 +267,7 @@ class InventoryAnalyticsService
             ->whereNull('products.deleted_at')
             ->where(fn (Builder $q) => $q
                 ->where('sold.units_sold', '>', 0)
-                ->orWhere('products.stock', '>', 0)
+                ->orWhereRaw("{$stock} > 0")
                 ->orWhereNotNull('adj.product_id'))
             ->selectRaw("
                 products.id,
@@ -656,6 +664,36 @@ class InventoryAnalyticsService
             ->values()
             ->all();
 
+        // Per-warehouse variant stock: each warehouse's variant units, at each
+        // variant's own cost and price (else the product's).
+        if (VariantWarehouseStockSettings::enabledFor($organizationId)) {
+            $variantRows = DB::table('variant_stock_levels')
+                ->join('product_variants', 'product_variants.id', '=', 'variant_stock_levels.product_variant_id')
+                ->join('products', 'products.id', '=', 'variant_stock_levels.product_id')
+                ->join('warehouses', 'warehouses.id', '=', 'variant_stock_levels.warehouse_id')
+                ->where('variant_stock_levels.organization_id', $organizationId)
+                ->whereNull('products.deleted_at')
+                ->whereNull('product_variants.deleted_at')
+                ->where('products.is_active', true)
+                ->when($warehouseIds !== null, fn (Builder $q) => $q->whereIn('variant_stock_levels.warehouse_id', $warehouseIds))
+                ->groupBy('warehouses.id', 'warehouses.name', 'products.currency')
+                ->selectRaw('
+                    warehouses.id as warehouse_id,
+                    warehouses.name as warehouse,
+                    products.currency as currency,
+                    COUNT(DISTINCT product_variants.id) as products,
+                    COALESCE(SUM(variant_stock_levels.on_hand), 0) as quantity,
+                    COALESCE(SUM(variant_stock_levels.on_hand * COALESCE(product_variants.purchase_price, products.purchase_price, 0)), 0) as cost_value,
+                    COALESCE(SUM(variant_stock_levels.on_hand * COALESCE(product_variants.price, products.price)), 0) as retail_value
+                ')
+                ->get()
+                ->groupBy('warehouse_id');
+
+            foreach ($variantRows as $group) {
+                $rows[] = $this->locationValuationRow(null, 'Variants', $group->first()->warehouse, $group, $currency);
+            }
+        }
+
         if ($warehouseIds !== null) {
             return $rows;
         }
@@ -671,6 +709,9 @@ class InventoryAnalyticsService
         $unallocated = DB::table('products')
             ->leftJoinSub($allocated, 'alloc', 'alloc.product_id', '=', 'products.id')
             ->where('products.organization_id', $organizationId)
+            // A product sold by variant holds its units on the variants: its
+            // own column is a stale aggregate, never stock.
+            ->when(VariantWarehouseStockSettings::enabledFor($organizationId), fn (Builder $q) => $q->where('products.has_variants', false))
             ->whereNull('products.deleted_at')
             ->where('products.is_active', true)
             ->groupBy('products.currency')

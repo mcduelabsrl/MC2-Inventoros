@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Inventory;
 
-use App\Exceptions\BusinessRuleException;
-use App\Exceptions\VariantStockException;
 use App\Exceptions\InsufficientStockException;
+use App\Exceptions\VariantStockException;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Inventory\StockOwner;
@@ -18,6 +17,7 @@ use App\Models\Order\OrderItem;
 use App\Models\Order\OrderItemAllocation;
 use App\Models\Warehouse;
 use App\Support\VariantWarehouseStockSettings;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +42,7 @@ class VariantStockService
      * Apply one operation.
      *
      * @param  list<array{variant: ProductVariant|int, warehouse_id: int, owner_id?: int|null, deltas: array<string, int>}>  $changes
-     * @param  array{source?: string, idempotency_key?: string|null, user_id?: int|null, order_id?: int|null, transfer_id?: int|null, return_order_id?: int|null, mode?: string, reason?: string|null, notes?: string|null, meta?: array|null, allow_negative?: bool, legacy_ledger?: bool, legacy_type?: string|null, legacy_reference?: \Illuminate\Database\Eloquent\Model|null}  $context
+     * @param  array{source?: string, idempotency_key?: string|null, user_id?: int|null, order_id?: int|null, transfer_id?: int|null, return_order_id?: int|null, mode?: string, reason?: string|null, notes?: string|null, meta?: array|null, allow_negative?: bool, legacy_ledger?: bool, legacy_type?: string|null, legacy_reference?: Model|null}  $context
      *
      * @throws InsufficientStockException when a change would make a row's available negative and allow_negative is false
      */

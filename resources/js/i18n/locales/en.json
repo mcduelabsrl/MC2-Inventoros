@@ -117,6 +117,7 @@
     "editWithName": "Edit: {name}"
   },
   "nav": {
+    "stockByWarehouse": "Stock by warehouse",
     "dashboard": "Dashboard",
     "inventory": "Inventory",
     "orders": "Orders",
@@ -3756,5 +3757,117 @@
     "amount": "Tax amount",
     "rate": "Rate",
     "rateHint": "Optional: enter a tax rate to calculate the amount from the subtotal after discounts. Only the amount is saved."
+  },
+  "stockByWarehouse": {
+    "title": "Stock by warehouse",
+    "subtitle": "Each variant's pairs in each warehouse, by state and owner, and their sync with sales channels.",
+    "disabled": "Stock per warehouse is not set up for this organization yet. Until it is, variants keep a single stock figure.",
+    "search": "Model, SKU, barcode…",
+    "allWarehouses": "All warehouses",
+    "allOwners": "All owners",
+    "unassigned": "To be assigned",
+    "onlyAnomalies": "Only anomalies",
+    "onlyToCheck": "Only to check (returns)",
+    "model": "Model",
+    "variant": "Colour / size",
+    "sku": "SKU",
+    "barcode": "Barcode",
+    "total": "Total",
+    "onHand": "On hand",
+    "available": "Available",
+    "committed": "Committed",
+    "unavailable": "Unavailable",
+    "qualityControl": "To check",
+    "damaged": "Damaged",
+    "reserved": "Reserved",
+    "incoming": "Incoming",
+    "owner": "Owner",
+    "owners": "Owners",
+    "anomalies": "Anomalies",
+    "noVariants": "No variants match these filters.",
+    "details": "Details",
+    "history": "History",
+    "openCommitments": "Open commitments",
+    "noCommitments": "No units committed to orders.",
+    "noHistory": "No movements yet.",
+    "shortfall": "short",
+    "anomaly": {
+      "negative": "Negative quantity",
+      "ownership": "Owner split does not match",
+      "sync": "Sync problem",
+      "shortfall": "Sold without stock"
+    },
+    "sync": {
+      "synced": "Synced",
+      "pending": "Pending",
+      "error": "Error",
+      "conflict": "Conflict",
+      "unmapped": "Not on the channel",
+      "paused": "Paused",
+      "lastSynced": "Last synced {at}",
+      "never": "never"
+    },
+    "issues": {
+      "title": "Sync anomalies",
+      "none": "No open sync anomalies."
+    },
+    "actions": {
+      "adjust": "Adjust",
+      "transfer": "Transfer",
+      "inspect": "Inspect returns",
+      "state": "Change state",
+      "assignOwner": "Assign owner",
+      "assignSelected": "Assign owner to selected",
+      "addToTransfer": "Add to transfer",
+      "confirm": "Confirm",
+      "cancel": "Cancel"
+    },
+    "form": {
+      "warehouse": "Warehouse",
+      "from": "From",
+      "to": "To",
+      "mode": "Type",
+      "delta": "Movement (+/−)",
+      "count": "Count (pairs really there)",
+      "quantity": "Pairs",
+      "reason": "Reason",
+      "notes": "Notes",
+      "outcome": "Outcome",
+      "outcomeAvailable": "Back on sale",
+      "outcomeDamaged": "Keep unavailable: damaged",
+      "outcomeReserved": "Keep unavailable: other",
+      "fromState": "From state",
+      "toState": "To state",
+      "fromOwner": "From owner",
+      "toOwner": "To owner",
+      "countHint": "Current on hand: {n}. If it changes before you confirm, the count is refused and you can check again.",
+      "transferHint": "Immediate: the pairs leave and arrive with one confirmation. The owner does not change.",
+      "ownerHint": "Only free pairs change owner. The quantity on the sales channel does not change.",
+      "lines": "Lines"
+    },
+    "transfers": {
+      "title": "Recent transfers",
+      "none": "No transfers yet.",
+      "reference": "Reference",
+      "route": "Route",
+      "pairs": "Pairs",
+      "order": "Order",
+      "channel": "Sales channel",
+      "channelStatus": {
+        "not_applicable": "Not applicable",
+        "pending": "Pending",
+        "synced": "Confirmed",
+        "error": "Error",
+        "conflict": "Conflict"
+      }
+    },
+    "consolidation": {
+      "title": "Stock for this order",
+      "ready": "All pairs are in {warehouse}: ready to ship.",
+      "notReady": "Some pairs are still elsewhere: bring them to {warehouse} before shipping.",
+      "toMove": "To bring over",
+      "action": "Bring to {warehouse}",
+      "committedIn": "Committed in"
+    }
   }
 }

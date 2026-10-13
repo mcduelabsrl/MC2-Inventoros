@@ -280,6 +280,12 @@ export const ROUTE_PERMISSIONS = {
     "stock-audits.show": [
         "view_stock_audits"
     ],
+    "stock-by-warehouse.index": [
+        "view_products"
+    ],
+    "stock-by-warehouse.show": [
+        "view_products"
+    ],
     "stock-transfers.create": [
         "transfer_stock"
     ],

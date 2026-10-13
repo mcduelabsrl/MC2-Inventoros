@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inventoros\Plugins\Shopify\Stock;
 
 use App\Models\Inventory\VariantStockOperation;
+use App\Models\User;
 use App\Services\Inventory\VariantStockService;
 use App\Services\Inventory\VariantTransferService;
 use Illuminate\Support\Str;
@@ -269,7 +270,7 @@ class TransferPlanner
 
         if ($lines !== [] && $from !== null && $to !== null) {
             $transfer = app(VariantTransferService::class)->transfer((int) $this->connection->organization_id, $from, $to, $lines,
-                $userId !== null ? \App\Models\User::find($userId) : null, "Transfer {$payload['transfer_name']} received at the wrong site");
+                $userId !== null ? User::find($userId) : null, "Transfer {$payload['transfer_name']} received at the wrong site");
             $done[] = "Immediate transfer {$transfer->reference} recorded.";
         }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Inventoros\Plugins\Shopify\Stock;
 
+use Illuminate\Support\Collection;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryLevel;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
@@ -157,9 +158,9 @@ class LevelBook
     /**
      * Operations not yet confirmed that touch a level.
      *
-     * @return \Illuminate\Support\Collection<int, ShopifyStockOperation>
+     * @return Collection<int, ShopifyStockOperation>
      */
-    public function openOperations(ShopifyInventoryLevel $level): \Illuminate\Support\Collection
+    public function openOperations(ShopifyInventoryLevel $level): Collection
     {
         $prefix = $level->inventory_item_id.'|'.$level->location_id.'|';
 

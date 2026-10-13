@@ -14,8 +14,10 @@ use App\Models\Order\Order;
 use App\Models\Warehouse;
 use App\Services\Inventory\VariantStockService;
 use App\Support\VariantWarehouseStockSettings;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inventoros\Plugins\Shopify\Jobs\ProcessStockOutbox;
@@ -193,7 +195,7 @@ class StockBootstrap
      */
     public static function purgeLegacyJobs(): int
     {
-        if (config('queue.default') !== 'database' || ! \Illuminate\Support\Facades\Schema::hasTable('jobs')) {
+        if (config('queue.default') !== 'database' || ! Schema::hasTable('jobs')) {
             return 0;
         }
 
@@ -355,9 +357,9 @@ class StockBootstrap
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, Order>
+     * @return Collection<int, Order>
      */
-    private function openOrders(): \Illuminate\Support\Collection
+    private function openOrders(): Collection
     {
         return Order::withoutGlobalScopes()
             ->where('organization_id', $this->connection->organization_id)

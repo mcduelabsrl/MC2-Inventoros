@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Inventory;
 
-use App\Exceptions\BusinessRuleException;
 use App\Exceptions\VariantStockException;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\VariantStockLevel;

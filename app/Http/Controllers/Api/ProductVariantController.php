@@ -20,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * @tags Product Variants
@@ -199,6 +200,10 @@ class ProductVariantController extends Controller
             'type' => ['required', 'string', 'in:increase,decrease,recount,damage,return,received'],
             'reason' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+            // Per-warehouse variant stock: the warehouse and owner of the
+            // units (default warehouse, owner to be assigned when omitted).
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('organization_id', $request->user()->organization_id)],
+            'stock_owner_id' => ['nullable', 'integer', Rule::exists('stock_owners', 'id')->where('organization_id', $request->user()->organization_id)],
         ]);
 
         // A variant's stock sits at its parent's location, so a restricted
@@ -218,6 +223,8 @@ class ProductVariantController extends Controller
                 type: $validated['type'],
                 reason: $validated['reason'] ?? null,
                 notes: $validated['notes'] ?? null,
+                warehouseId: isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null,
+                stockOwnerId: isset($validated['stock_owner_id']) ? (int) $validated['stock_owner_id'] : null,
             );
         } catch (InsufficientStockException $e) {
             return response()->json([

@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models\Inventory;
 
-use App\Exceptions\BusinessRuleException;
-use App\Exceptions\VariantStockException;
 use App\Exceptions\InsufficientStockException;
+use App\Exceptions\VariantStockException;
 use App\Models\Auth\Organization;
 use App\Models\User;
 use App\Services\Inventory\VariantStockService;

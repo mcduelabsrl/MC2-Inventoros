@@ -18,6 +18,7 @@ use App\Http\Controllers\Inventory\SKUController;
 use App\Http\Controllers\Inventory\StockAdjustmentController;
 use App\Http\Controllers\Inventory\StockAuditController;
 use App\Http\Controllers\Inventory\StockTransferController;
+use App\Http\Controllers\Inventory\VariantStockController;
 use App\Http\Controllers\Inventory\WorkOrderController;
 use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -143,6 +144,17 @@ Route::get('/stock-transfers/{stockTransfer}', [StockTransferController::class, 
 Route::put('/stock-transfers/{stockTransfer}', [StockTransferController::class, 'update'])->name('stock-transfers.update')->middleware('permission:transfer_stock');
 Route::post('/stock-transfers/{stockTransfer}/complete', [StockTransferController::class, 'complete'])->name('stock-transfers.complete')->middleware('permission:transfer_stock');
 Route::post('/stock-transfers/{stockTransfer}/cancel', [StockTransferController::class, 'cancel'])->name('stock-transfers.cancel')->middleware('permission:transfer_stock');
+
+// Stock by warehouse (variants): one screen for quantities per warehouse,
+// owner and state, with adjustments, transfers, inspections and owners.
+Route::get('/stock-by-warehouse', [VariantStockController::class, 'index'])->name('stock-by-warehouse.index')->middleware('permission:view_products');
+Route::get('/stock-by-warehouse/variants/{variant}', [VariantStockController::class, 'show'])->name('stock-by-warehouse.show')->middleware('permission:view_products');
+Route::post('/stock-by-warehouse/variants/{variant}/adjust', [VariantStockController::class, 'adjust'])->name('stock-by-warehouse.adjust')->middleware('permission:manage_stock');
+Route::post('/stock-by-warehouse/variants/{variant}/inspect', [VariantStockController::class, 'inspect'])->name('stock-by-warehouse.inspect')->middleware('permission:manage_stock');
+Route::post('/stock-by-warehouse/variants/{variant}/state', [VariantStockController::class, 'state'])->name('stock-by-warehouse.state')->middleware('permission:manage_stock');
+Route::post('/stock-by-warehouse/transfer', [VariantStockController::class, 'transfer'])->name('stock-by-warehouse.transfer')->middleware('permission:transfer_stock');
+Route::post('/stock-by-warehouse/owners', [VariantStockController::class, 'owners'])->name('stock-by-warehouse.owners')->middleware('permission:manage_stock');
+Route::post('/orders/{order}/consolidate', [VariantStockController::class, 'consolidate'])->name('orders.consolidate')->middleware('permission:transfer_stock');
 
 // Stock Audits - Permission based
 Route::get('/stock-audits', [StockAuditController::class, 'index'])->name('stock-audits.index')->middleware('permission:view_stock_audits');

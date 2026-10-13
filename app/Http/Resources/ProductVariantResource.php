@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Inventory\ProductVariant;
+use App\Services\Inventory\VariantStockService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,6 +35,12 @@ class ProductVariantResource extends JsonResource
             'effective_price' => $this->effective_price,
             'effective_purchase_price' => $this->effective_purchase_price,
             'stock' => $this->stock,
+            // Per-warehouse variant stock: quantities by warehouse id and
+            // state (on_hand, available, committed, unavailable, incoming).
+            'stock_by_warehouse' => $this->when(
+                VariantWarehouseStockSettings::enabledFor((int) $this->organization_id),
+                fn () => app(VariantStockService::class)->totalsByWarehouse($this->resource),
+            ),
             'min_stock' => $this->min_stock,
             'image' => $this->image,
             'weight' => $this->weight,

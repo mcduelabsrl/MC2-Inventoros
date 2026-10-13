@@ -6,6 +6,8 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Concerns\AuthenticatesMcpRequest;
 use App\Models\Inventory\Product;
+use App\Services\Inventory\VariantStockService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Laravel\Mcp\Request;
@@ -74,7 +76,11 @@ class GetProductTool extends Tool
                 'is_primary' => (bool) $s->pivot?->is_primary,
             ])->all(),
             'options' => $product->options->map(fn ($o) => $o->only(['id', 'name', 'values']))->all(),
-            'active_variants' => $product->activeVariants->map(fn ($v) => $v->only(['id', 'sku', 'stock', 'price']))->all(),
+            'active_variants' => $product->activeVariants->map(fn ($v) => $v->only(['id', 'sku', 'stock', 'price'])
+                // Per-warehouse variant stock: each warehouse's quantities by state.
+                + (VariantWarehouseStockSettings::enabledFor((int) $product->organization_id)
+                    ? ['by_warehouse' => app(VariantStockService::class)->totalsByWarehouse($v)]
+                    : []))->all(),
             'created_at' => $product->created_at?->toIso8601String(),
             'updated_at' => $product->updated_at?->toIso8601String(),
         ]);

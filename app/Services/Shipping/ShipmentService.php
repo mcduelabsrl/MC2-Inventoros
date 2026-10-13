@@ -9,6 +9,8 @@ use App\Enums\ShipmentStatus;
 use App\Exceptions\BusinessRuleException;
 use App\Exceptions\ShippingException;
 use App\Mail\ShipmentShippedEmail;
+use App\Models\Auth\Organization;
+use App\Models\Customer;
 use App\Models\Order\Order;
 use App\Models\Order\OrderItem;
 use App\Models\Shipping\Shipment;
@@ -737,7 +739,7 @@ final class ShipmentService
     public function defaultToAddress(Order $order): array
     {
         $customer = $order->customer_id
-            ? \App\Models\Customer::withoutGlobalScopes()->find($order->customer_id)
+            ? Customer::withoutGlobalScopes()->find($order->customer_id)
             : null;
 
         $base = [
@@ -797,7 +799,7 @@ final class ShipmentService
         }
 
         $warehouse = Warehouse::withoutGlobalScopes()->find($warehouseId ?? $order->warehouse_id ?? $settings->default_warehouse_id);
-        $organization = \App\Models\Auth\Organization::query()->withoutGlobalScopes()->find($order->organization_id);
+        $organization = Organization::query()->withoutGlobalScopes()->find($order->organization_id);
 
         return [
             'name' => $warehouse?->manager_name ?: $organization?->name,

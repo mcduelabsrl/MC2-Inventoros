@@ -216,6 +216,7 @@
     "editWithName": "Modifica: {name}"
   },
   "nav": {
+    "stockByWarehouse": "Giacenze per magazzino",
     "dashboard": "Dashboard",
     "inventory": "Inventario",
     "orders": "Ordini",
@@ -3756,5 +3757,117 @@
     "amount": "Importo dell'imposta",
     "rate": "Aliquota",
     "rateHint": "Facoltativo: inserisci un'aliquota per calcolare l'importo dal subtotale dopo gli sconti. Viene salvato solo l'importo."
+  },
+  "stockByWarehouse": {
+    "title": "Giacenze per magazzino",
+    "subtitle": "Le paia di ogni variante in ogni magazzino, per stato e proprietario, e la sincronizzazione con i canali di vendita.",
+    "disabled": "Le giacenze per magazzino non sono ancora attive per questa organizzazione. Fino ad allora le varianti hanno una sola quantità.",
+    "search": "Modello, SKU, barcode…",
+    "allWarehouses": "Tutti i magazzini",
+    "allOwners": "Tutti i proprietari",
+    "unassigned": "Proprietà da attribuire",
+    "onlyAnomalies": "Solo anomalie",
+    "onlyToCheck": "Solo da controllare (resi)",
+    "model": "Modello",
+    "variant": "Colore / taglia",
+    "sku": "SKU",
+    "barcode": "Barcode",
+    "total": "Totale",
+    "onHand": "Fisico",
+    "available": "Disponibile",
+    "committed": "Impegnato",
+    "unavailable": "Non disponibile",
+    "qualityControl": "Da controllare",
+    "damaged": "Danneggiato",
+    "reserved": "Riservato",
+    "incoming": "In arrivo",
+    "owner": "Proprietario",
+    "owners": "Proprietari",
+    "anomalies": "Anomalie",
+    "noVariants": "Nessuna variante corrisponde ai filtri.",
+    "details": "Dettaglio",
+    "history": "Storico",
+    "openCommitments": "Impegni aperti",
+    "noCommitments": "Nessun paio impegnato su ordini.",
+    "noHistory": "Nessun movimento.",
+    "shortfall": "mancanti",
+    "anomaly": {
+      "negative": "Quantità negativa",
+      "ownership": "Ripartizione proprietà incoerente",
+      "sync": "Problema di sincronizzazione",
+      "shortfall": "Venduto senza giacenza"
+    },
+    "sync": {
+      "synced": "Sincronizzato",
+      "pending": "In attesa",
+      "error": "Errore",
+      "conflict": "Conflitto",
+      "unmapped": "Non sul canale",
+      "paused": "In pausa",
+      "lastSynced": "Ultimo aggiornamento riuscito {at}",
+      "never": "mai"
+    },
+    "issues": {
+      "title": "Anomalie di sincronizzazione",
+      "none": "Nessuna anomalia di sincronizzazione aperta."
+    },
+    "actions": {
+      "adjust": "Rettifica",
+      "transfer": "Trasferisci",
+      "inspect": "Controllo resi",
+      "state": "Cambia stato",
+      "assignOwner": "Assegna proprietà",
+      "assignSelected": "Assegna proprietà alle selezionate",
+      "addToTransfer": "Aggiungi al trasferimento",
+      "confirm": "Conferma",
+      "cancel": "Annulla"
+    },
+    "form": {
+      "warehouse": "Magazzino",
+      "from": "Da",
+      "to": "A",
+      "mode": "Tipo",
+      "delta": "Movimento (+/−)",
+      "count": "Conteggio (paia realmente presenti)",
+      "quantity": "Paia",
+      "reason": "Motivo",
+      "notes": "Note",
+      "outcome": "Esito",
+      "outcomeAvailable": "Rimetti in vendita",
+      "outcomeDamaged": "Mantieni non disponibile: danneggiato",
+      "outcomeReserved": "Mantieni non disponibile: altro motivo",
+      "fromState": "Dallo stato",
+      "toState": "Allo stato",
+      "fromOwner": "Dal proprietario",
+      "toOwner": "Al proprietario",
+      "countHint": "Fisico attuale: {n}. Se cambia prima della conferma, il conteggio viene rifiutato e puoi ricontrollare.",
+      "transferHint": "Immediato: le paia partono e arrivano con una sola conferma. Il proprietario non cambia.",
+      "ownerHint": "Cambiano proprietario solo le paia libere. La quantità sul canale di vendita non cambia.",
+      "lines": "Righe"
+    },
+    "transfers": {
+      "title": "Trasferimenti recenti",
+      "none": "Nessun trasferimento.",
+      "reference": "Riferimento",
+      "route": "Percorso",
+      "pairs": "Paia",
+      "order": "Ordine",
+      "channel": "Canale di vendita",
+      "channelStatus": {
+        "not_applicable": "Non previsto",
+        "pending": "In attesa",
+        "synced": "Confermato",
+        "error": "Errore",
+        "conflict": "Conflitto"
+      }
+    },
+    "consolidation": {
+      "title": "Giacenza per questo ordine",
+      "ready": "Tutte le paia sono in {warehouse}: pronto per la spedizione.",
+      "notReady": "Alcune paia sono ancora altrove: portale in {warehouse} prima di spedire.",
+      "toMove": "Da portare",
+      "action": "Porta in {warehouse}",
+      "committedIn": "Impegnato in"
+    }
   }
 }

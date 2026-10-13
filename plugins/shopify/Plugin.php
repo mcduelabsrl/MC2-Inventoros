@@ -22,6 +22,7 @@
 
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
+use App\Models\Inventory\VariantStockOperation;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
@@ -29,20 +30,21 @@ use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Inventoros\Plugins\Shopify\Http\SettingsController;
 use Inventoros\Plugins\Shopify\Http\StockSyncController;
+use Inventoros\Plugins\Shopify\Http\WebhookController;
+use Inventoros\Plugins\Shopify\Jobs\FullInventorySync;
+use Inventoros\Plugins\Shopify\Jobs\FullStockReconcile;
 use Inventoros\Plugins\Shopify\Jobs\ProcessStockOutbox;
 use Inventoros\Plugins\Shopify\Jobs\ProcessWebhookEvent;
+use Inventoros\Plugins\Shopify\Jobs\PushInventory;
 use Inventoros\Plugins\Shopify\Jobs\ReconcileInventoryLevels;
+use Inventoros\Plugins\Shopify\Jobs\RecoverOrders;
+use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
 use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
+use Inventoros\Plugins\Shopify\PushGate;
 use Inventoros\Plugins\Shopify\Stock\OutboundPlanner;
 use Inventoros\Plugins\Shopify\Stock\StockConsole;
 use Inventoros\Plugins\Shopify\Stock\StockStatus;
-use Inventoros\Plugins\Shopify\Http\WebhookController;
-use Inventoros\Plugins\Shopify\Jobs\FullInventorySync;
-use Inventoros\Plugins\Shopify\Jobs\PushInventory;
-use Inventoros\Plugins\Shopify\Jobs\RecoverOrders;
-use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
-use Inventoros\Plugins\Shopify\PushGate;
 
 require_once __DIR__.'/src/autoload.php';
 
@@ -155,7 +157,7 @@ return function (string $slug, array $manifest): void {
             }
             // Read it again: meta may have been completed in the same
             // transaction (e.g. where a Shopify refund restocked).
-            $fresh = \App\Models\Inventory\VariantStockOperation::with('movements')->find($operation->id);
+            $fresh = VariantStockOperation::with('movements')->find($operation->id);
             if ($fresh !== null && (new OutboundPlanner($connection))->plan($fresh) !== []) {
                 ProcessStockOutbox::dispatch((int) $connection->organization_id);
             }
@@ -247,7 +249,7 @@ return function (string $slug, array $manifest): void {
         // reported. It reads Shopify; it never pushes local totals.
         Schedule::call(function () {
             ShopifyConnection::query()->where('stock_sync_mode', ShopifyConnection::STOCK_TWO_WAY)->pluck('organization_id')
-                ->each(fn ($organizationId) => \Inventoros\Plugins\Shopify\Jobs\FullStockReconcile::dispatch((int) $organizationId));
+                ->each(fn ($organizationId) => FullStockReconcile::dispatch((int) $organizationId));
         })->dailyAt('02:40')->name('shopify:stock-reconcile')->withoutOverlapping();
 
         StockConsole::register();

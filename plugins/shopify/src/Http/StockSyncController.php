@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Inventoros\Plugins\Shopify\Http;
 
+use App\Models\Inventory\VariantStockOperation;
 use App\Models\Order\Order;
 use App\Services\Inventory\VariantStockService;
-use App\Models\Inventory\VariantStockOperation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inventoros\Plugins\Shopify\Jobs\ProcessStockOutbox;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
-use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
 use Inventoros\Plugins\Shopify\OrderImporter;

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Inventoros\Plugins\Shopify\Stock;
 
 use App\Models\Inventory\ProductVariant;
+use App\Models\Inventory\VariantStockLevel;
 use App\Models\Order\Order;
 use App\Models\Order\OrderItemAllocation;
-use App\Models\Inventory\VariantStockLevel;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\ShopifyClient;

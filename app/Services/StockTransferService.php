@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Exceptions\BusinessRuleException;
-use App\Exceptions\VariantStockException;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvalidStateException;
+use App\Exceptions\VariantStockException;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductLocation;
 use App\Models\Inventory\StockAdjustment;

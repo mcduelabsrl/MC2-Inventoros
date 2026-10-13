@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Mcp\Concerns\AuthenticatesMcpRequest;
+use App\Services\Inventory\VariantStockService;
 use App\Services\ScanLookupService;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -51,6 +53,9 @@ class LookupBarcodeTool extends Tool
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
                 'stock' => $variant->stock,
+                'by_warehouse' => VariantWarehouseStockSettings::enabledFor((int) $variant->organization_id)
+                    ? app(VariantStockService::class)->totalsByWarehouse($variant)
+                    : null,
                 'price' => $variant->price,
                 'product' => $match['product']->only(['id', 'name']),
             ]);

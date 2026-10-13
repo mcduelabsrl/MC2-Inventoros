@@ -6,6 +6,7 @@ namespace Inventoros\Plugins\Shopify\Http;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
 use Inventoros\Plugins\Shopify\Jobs\ProcessWebhookEvent;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
@@ -110,7 +111,7 @@ class WebhookController
         }
 
         try {
-            return \Illuminate\Support\Carbon::parse($value)->toDateTimeString();
+            return Carbon::parse($value)->toDateTimeString();
         } catch (\Throwable) {
             return null;
         }
