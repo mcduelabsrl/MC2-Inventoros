@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "待盘点",
       "counted": "已盘点",
+      "recount": "Count again",
       "verified": "已核实",
       "adjusted": "已调整"
     },
@@ -64,7 +65,11 @@
         "spot": "快速检查指定产品"
       },
       "location": "仓库库位",
-      "locationHint": "留空则包含所有库位的产品"
+      "locationHint": "留空则包含所有库位的产品",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "盘点单号",
@@ -95,6 +100,8 @@
       "inStock": "库存",
       "fullAuditInfo": "所有启用的产品将自动纳入此次盘点。创建后可查看盘点项目。",
       "fullAuditInfoAtLocation": "所选库位的所有启用产品将自动纳入此次盘点。创建后可查看盘点项目。",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "创建盘点"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "（已盘点 {counted} / {total}）",
       "count": "盘点",
       "recount": "重新盘点",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "备注（选填）",
       "noItems": "此盘点中没有项目",
       "processing": "处理中...",

@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "In afwachting",
       "counted": "Geteld",
+      "recount": "Count again",
       "verified": "Geverifieerd",
       "adjusted": "Aangepast"
     },
@@ -64,7 +65,11 @@
         "spot": "Snelle controle van specifieke producten"
       },
       "location": "Magazijnlocatie",
-      "locationHint": "Laat leeg om producten van alle locaties op te nemen"
+      "locationHint": "Laat leeg om producten van alle locaties op te nemen",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "Controle #",
@@ -95,6 +100,8 @@
       "inStock": "op voorraad",
       "fullAuditInfo": "Alle actieve producten worden automatisch in deze controle opgenomen. U kunt de artikelen na het aanmaken controleren.",
       "fullAuditInfoAtLocation": "Alle actieve producten op de geselecteerde locatie worden automatisch in deze controle opgenomen. U kunt de artikelen na het aanmaken controleren.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "Controle aanmaken"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "({counted} van {total} geteld)",
       "count": "Tellen",
       "recount": "Opnieuw tellen",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "Notities (optioneel)",
       "noItems": "Geen artikelen in deze controle",
       "processing": "Verwerken...",

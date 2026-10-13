@@ -12,8 +12,11 @@ use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductLocation;
 use App\Models\Inventory\StockAudit;
 use App\Models\Inventory\StockAuditItem;
+use App\Models\Warehouse;
 use App\Services\StockAuditService;
 use App\Services\WarehouseAccessService;
+use App\Support\VariantWarehouseStockSettings;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,10 +42,16 @@ class StockAuditController extends Controller
     {
         $organizationId = $request->user()->organization_id;
 
-        $query = StockAudit::with(['warehouseLocation', 'creator'])
+        $accessible = $this->warehouseAccess->accessibleWarehouseIds($request->user());
+
+        $query = StockAudit::with(['warehouseLocation', 'warehouse:id,name', 'creator'])
             ->withCount('items')
             ->forOrganization($organizationId)
-            ->tap(fn ($q) => $this->warehouseAccess->scopeByLocation($q, $request->user(), 'warehouse_location_id'))
+            // Counts by warehouse: the user's warehouses; by bin: as before.
+            ->when($accessible !== null, fn ($q) => $q->where(fn ($q) => $q
+                ->where(fn ($q) => $q->whereNotNull('warehouse_id')->whereIn('warehouse_id', $accessible))
+                ->orWhere(fn ($q) => $q->whereNull('warehouse_id')
+                    ->tap(fn ($q) => $this->warehouseAccess->scopeByLocation($q, $request->user(), 'warehouse_location_id')))))
             ->when($request->input('search'), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('audit_number', 'like', "%{$search}%")
@@ -95,11 +104,20 @@ class StockAuditController extends Controller
         $products = Product::forOrganization($organizationId)
             ->active()
             ->orderBy('name')
-            ->get(['id', 'name', 'sku', 'stock']);
+            ->get(['id', 'name', 'sku', 'stock', 'has_variants']);
+
+        // With stock per warehouse, products with variants are counted by
+        // warehouse (one line per variant), the others by bin.
+        $byWarehouse = VariantWarehouseStockSettings::enabledFor((int) $organizationId);
 
         return Inertia::render('StockAudits/Create', [
             'locations' => $locations,
             'products' => $products,
+            'warehouses' => $byWarehouse
+                ? Warehouse::forOrganization($organizationId)
+                    ->tap(fn ($q) => $this->warehouseAccess->scopeWarehouses($q, $request->user(), 'warehouses.id'))
+                    ->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'code'])
+                : [],
             'auditTypes' => [
                 'full' => 'Full Audit',
                 'cycle' => 'Cycle Count',
@@ -117,9 +135,15 @@ class StockAuditController extends Controller
     {
         // A restricted user audits their own warehouses only; an audit with no
         // location spans the whole organization.
-        $this->warehouseAccess->authorizeLocation($request->user(), $request->validated()['warehouse_location_id'] ?? null);
+        empty($request->validated()['warehouse_id'])
+            ? $this->warehouseAccess->authorizeLocation($request->user(), $request->validated()['warehouse_location_id'] ?? null)
+            : $this->warehouseAccess->authorizeWarehouse($request->user(), (int) $request->validated()['warehouse_id']);
 
-        $audit = $audits->create($request->user()->organization_id, $request->user(), $request->validated());
+        try {
+            $audit = $audits->create($request->user()->organization_id, $request->user(), $request->validated());
+        } catch (BusinessRuleException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
 
         return redirect()->route('stock-audits.show', $audit)
             ->with('success', 'Stock audit created successfully with '.$audit->items()->count().' items.');
@@ -137,14 +161,16 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         $stockAudit->load([
             'warehouseLocation',
+            'warehouse:id,name',
             'creator',
             'items.product',
             'items.variant',
             'items.location',
+            'items.warehouse:id,name',
             'items.countedByUser',
         ]);
 
@@ -180,7 +206,7 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         if ($stockAudit->status !== 'draft') {
             return redirect()->route('stock-audits.show', $stockAudit)
@@ -219,7 +245,7 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         if ($stockAudit->status !== 'draft') {
             return redirect()->route('stock-audits.show', $stockAudit)
@@ -245,7 +271,8 @@ class StockAuditController extends Controller
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'audit_type' => $validated['audit_type'],
-            'warehouse_location_id' => $validated['warehouse_location_id'] ?? null,
+            // A count by warehouse keeps its warehouse and has no bin.
+            'warehouse_location_id' => $stockAudit->warehouse_id !== null ? null : ($validated['warehouse_location_id'] ?? null),
             'notes' => $validated['notes'] ?? null,
         ]);
 
@@ -266,7 +293,7 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         if ($stockAudit->status !== 'draft') {
             return redirect()->route('stock-audits.show', $stockAudit)
@@ -290,7 +317,7 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         try {
             $audits->start($stockAudit, $request->user());
@@ -314,7 +341,7 @@ class StockAuditController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->warehouseAccess->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         try {
             // allow_uncounted: the user confirmed completing with lines left
@@ -341,8 +368,12 @@ class StockAuditController extends Controller
      */
     public function updateCount(Request $request, StockAudit $stockAudit, StockAuditItem $item, StockAuditService $audits): JsonResponse
     {
-        if ($stockAudit->organization_id !== $request->user()->organization_id
-            || ! $this->warehouseAccess->canAccessLocation($request->user(), $stockAudit->warehouse_location_id)) {
+        if ($stockAudit->organization_id !== $request->user()->organization_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+        try {
+            $audits->authorizeAudit($request->user(), $stockAudit);
+        } catch (AuthorizationException) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -367,7 +398,7 @@ class StockAuditController extends Controller
 
         return response()->json([
             'message' => 'Count updated successfully',
-            'item' => $item->fresh(['product', 'countedByUser']),
+            'item' => $item->fresh(['product', 'variant', 'warehouse:id,name', 'countedByUser']),
         ]);
     }
 }

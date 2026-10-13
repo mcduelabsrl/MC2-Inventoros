@@ -443,6 +443,80 @@ class VariantStockService
     }
 
     /**
+     * Physical units of a variant in a warehouse, all owners together.
+     */
+    public function warehouseOnHand(ProductVariant $variant, int $warehouseId): int
+    {
+        return (int) VariantStockLevel::where('product_variant_id', $variant->id)
+            ->where('warehouse_id', $warehouseId)->sum('on_hand');
+    }
+
+    /**
+     * Set a variant's on-hand in a warehouse, all owners together, to a
+     * counted figure (an absolute correction, as a stock audit counts the
+     * shelf without knowing whose each pair is). Units found go to "to be
+     * attributed"; units missing come off "to be attributed" first, then
+     * the owners with the most free units.
+     *
+     * $context['expected_on_hand'], when given, is the warehouse figure the
+     * count was taken against: if the stock moved since, the count is
+     * refused. Returns null when the count matches the stock.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function countWarehouse(ProductVariant $variant, int $warehouseId, int $counted, array $context = []): ?VariantStockOperation
+    {
+        return DB::transaction(function () use ($variant, $warehouseId, $counted, $context) {
+            $rows = VariantStockLevel::where('product_variant_id', $variant->id)
+                ->where('warehouse_id', $warehouseId)->orderBy('id')->lockForUpdate()->get();
+            $before = (int) $rows->sum('on_hand');
+
+            if (array_key_exists('expected_on_hand', $context) && $context['expected_on_hand'] !== null
+                && (int) $context['expected_on_hand'] !== $before) {
+                throw new VariantStockException(sprintf(
+                    'The stock changed after it was counted: it was %d, it is now %d. Count it again.',
+                    (int) $context['expected_on_hand'],
+                    $before,
+                ));
+            }
+
+            $delta = $counted - $before;
+            if ($delta === 0) {
+                return null;
+            }
+
+            $changes = [];
+            if ($delta > 0) {
+                $changes[] = ['variant' => $variant, 'warehouse_id' => $warehouseId, 'owner_id' => null, 'deltas' => ['on_hand' => $delta]];
+            } else {
+                $left = -$delta;
+                $order = $rows->sortBy(fn (VariantStockLevel $l) => [$l->owner_key === 0 ? 0 : 1, -$l->available, $l->owner_key]);
+                foreach ($order as $row) {
+                    $take = min(max(0, $row->available), $left);
+                    if ($take > 0) {
+                        $changes[] = ['variant' => $variant, 'warehouse_id' => $warehouseId, 'owner_id' => $row->stock_owner_id, 'deltas' => ['on_hand' => -$take]];
+                        $left -= $take;
+                    }
+                }
+                // Fewer units than are committed or set aside: the rest
+                // comes off "to be attributed", which may go negative.
+                if ($left > 0) {
+                    $changes[] = ['variant' => $variant, 'warehouse_id' => $warehouseId, 'owner_id' => null, 'deltas' => ['on_hand' => -$left]];
+                }
+            }
+
+            unset($context['expected_on_hand']);
+            $meta = ($context['meta'] ?? []) + [
+                'counted' => $counted,
+                'warehouse_on_hand_before' => $before,
+            ];
+
+            return $this->apply((int) $variant->organization_id, VariantStockOperation::TYPE_COUNT, $changes,
+                ['mode' => 'absolute', 'meta' => $meta, 'allow_negative' => true] + $context);
+        });
+    }
+
+    /**
      * Move units between states inside one row (e.g. available -> damaged).
      * Use 'available' as a pseudo-state: it is what is left of on_hand.
      *

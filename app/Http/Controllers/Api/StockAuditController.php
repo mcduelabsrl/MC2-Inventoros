@@ -39,10 +39,17 @@ class StockAuditController extends Controller
     {
         $organizationId = $request->user()->organization_id;
 
+        $access = app(WarehouseAccessService::class);
+        $accessible = $access->accessibleWarehouseIds($request->user());
+
         $query = StockAudit::with(['warehouseLocation', 'creator'])
             ->withCount('items')
             ->forOrganization($organizationId)
-            ->tap(fn ($q) => app(WarehouseAccessService::class)->scopeByLocation($q, $request->user(), 'warehouse_location_id'))
+            // Counts by warehouse: the user's warehouses; by bin: as before.
+            ->when($accessible !== null, fn ($q) => $q->where(fn ($q) => $q
+                ->where(fn ($q) => $q->whereNotNull('warehouse_id')->whereIn('warehouse_id', $accessible))
+                ->orWhere(fn ($q) => $q->whereNull('warehouse_id')
+                    ->tap(fn ($q) => $access->scopeByLocation($q, $request->user(), 'warehouse_location_id')))))
             ->when($request->input('status'), function ($query, $status) {
                 $query->byStatus($status);
             })
@@ -65,9 +72,8 @@ class StockAuditController extends Controller
     /**
      * Display the specified stock audit.
      *
-     * @param Request $request The incoming HTTP request
-     * @param StockAudit $stockAudit The stock audit to display
-     * @return JsonResponse
+     * @param  Request  $request  The incoming HTTP request
+     * @param  StockAudit  $stockAudit  The stock audit to display
      */
     public function show(Request $request, StockAudit $stockAudit): JsonResponse
     {
@@ -78,7 +84,7 @@ class StockAuditController extends Controller
             ], 404);
         }
 
-        app(WarehouseAccessService::class)->authorizeLocation($request->user(), $stockAudit->warehouse_location_id);
+        app(StockAuditService::class)->authorizeAudit($request->user(), $stockAudit);
 
         $stockAudit->load([
             'warehouseLocation',
@@ -99,10 +105,17 @@ class StockAuditController extends Controller
      *
      * Items are seeded from `product_ids` when given, otherwise from the
      * products at `warehouse_location_id`, otherwise from every active product.
+     * With `warehouse_id` (stock per warehouse) the audit counts variants in
+     * that warehouse: one item per variant of `product_ids`, or of every
+     * active product with variants.
      */
     public function store(StoreStockAuditRequest $request, StockAuditService $audits): JsonResponse
     {
-        $audit = $audits->create($request->user()->organization_id, $request->user(), $request->validated());
+        try {
+            $audit = $audits->create($request->user()->organization_id, $request->user(), $request->validated());
+        } catch (BusinessRuleException $e) {
+            return $this->stateError($e);
+        }
 
         return response()->json([
             'message' => 'Stock audit created successfully',

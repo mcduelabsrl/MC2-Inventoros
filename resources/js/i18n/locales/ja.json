@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "保留中",
       "counted": "カウント済み",
+      "recount": "Count again",
       "verified": "確認済み",
       "adjusted": "調整済み"
     },
@@ -64,7 +65,11 @@
         "spot": "特定の商品をすばやくチェック"
       },
       "location": "倉庫ロケーション",
-      "locationHint": "空欄の場合は、すべてのロケーションの商品が対象になります"
+      "locationHint": "空欄の場合は、すべてのロケーションの商品が対象になります",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "棚卸し番号",
@@ -95,6 +100,8 @@
       "inStock": "在庫",
       "fullAuditInfo": "有効なすべての商品がこの棚卸しに自動的に含まれます。品目は作成後に確認できます。",
       "fullAuditInfoAtLocation": "選択したロケーションの有効なすべての商品がこの棚卸しに自動的に含まれます。品目は作成後に確認できます。",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "棚卸しを作成"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "（{total}件中 {counted}件カウント済み）",
       "count": "カウント",
       "recount": "再カウント",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "メモ（任意）",
       "noItems": "この棚卸しに品目はありません",
       "processing": "処理中...",

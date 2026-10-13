@@ -66,6 +66,7 @@ const itemStatusVariant = (status) =>
     ({
         pending: 'neutral',
         counted: 'info',
+        recount: 'warning',
         verified: 'success',
         adjusted: 'brand',
     }[status] || 'neutral');
@@ -75,6 +76,7 @@ const getItemStatusLabel = (status) => {
     const labels = {
         'pending': t('stockAudits.itemStatuses.pending'),
         'counted': t('stockAudits.itemStatuses.counted'),
+        'recount': t('stockAudits.itemStatuses.recount'),
         'verified': t('stockAudits.itemStatuses.verified'),
         'adjusted': t('stockAudits.itemStatuses.adjusted'),
     };
@@ -364,10 +366,11 @@ const thClass = 'px-6 py-3 text-left text-xs font-medium uppercase tracking-wide
                         <p class="text-sm font-medium text-text-primary">{{ typeLabels[audit.audit_type] || audit.audit_type }}</p>
                     </div>
                     <div>
-                        <p class="mb-1 text-xs text-text-tertiary">{{ t('stockAudits.columns.location') }}</p>
+                        <p class="mb-1 text-xs text-text-tertiary">{{ audit.warehouse ? t('stockAudits.fields.warehouse') : t('stockAudits.columns.location') }}</p>
                         <p class="text-sm font-medium text-text-primary">
-                            {{ audit.warehouse_location?.name || t('products.allLocations') }}
+                            {{ audit.warehouse?.name || audit.warehouse_location?.name || t('products.allLocations') }}
                         </p>
+                        <p v-if="audit.warehouse" class="mt-1 text-xs text-text-tertiary">{{ t('stockAudits.show.byWarehouseHint') }}</p>
                     </div>
                     <div>
                         <p class="mb-1 text-xs text-text-tertiary">{{ t('stockAudits.columns.createdBy') }}</p>
@@ -475,11 +478,11 @@ const thClass = 'px-6 py-3 text-left text-xs font-medium uppercase tracking-wide
                             <!-- Normal Row -->
                             <tr v-if="editingItemId !== item.id" :id="`audit-item-${item.id}`" class="border-b border-border-subtle transition-colors last:border-b-0 hover:bg-surface-overlay" :class="{ 'bg-brand-soft': highlightedItemId === item.id }">
                                 <td class="px-6 py-4 text-sm text-text-primary">
-                                    <div class="font-medium">{{ item.product?.name || '-' }}</div>
-                                    <div class="text-xs text-text-tertiary">SKU: {{ item.product?.sku || '-' }}</div>
+                                    <div class="font-medium">{{ item.product?.name || '-' }}<span v-if="item.variant" class="font-normal text-text-secondary"> · {{ item.variant.title }}</span></div>
+                                    <div class="text-xs text-text-tertiary">SKU: {{ item.variant?.sku || item.product?.sku || '-' }}</div>
                                 </td>
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-text-secondary">
-                                    {{ item.location?.name || '-' }}
+                                    {{ item.warehouse?.name || item.location?.name || '-' }}
                                 </td>
                                 <td class="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums text-text-secondary">
                                     {{ item.system_quantity }}
@@ -511,11 +514,11 @@ const thClass = 'px-6 py-3 text-left text-xs font-medium uppercase tracking-wide
                             <!-- Inline Editing Row -->
                             <tr v-else :id="`audit-item-${item.id}`" class="border-b border-border-subtle bg-brand-soft last:border-b-0">
                                 <td class="px-6 py-4 text-sm text-text-primary">
-                                    <div class="font-medium">{{ item.product?.name || '-' }}</div>
-                                    <div class="text-xs text-text-tertiary">SKU: {{ item.product?.sku || '-' }}</div>
+                                    <div class="font-medium">{{ item.product?.name || '-' }}<span v-if="item.variant" class="font-normal text-text-secondary"> · {{ item.variant.title }}</span></div>
+                                    <div class="text-xs text-text-tertiary">SKU: {{ item.variant?.sku || item.product?.sku || '-' }}</div>
                                 </td>
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-text-secondary">
-                                    {{ item.location?.name || '-' }}
+                                    {{ item.warehouse?.name || item.location?.name || '-' }}
                                 </td>
                                 <td class="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums text-text-secondary">
                                     {{ item.system_quantity }}

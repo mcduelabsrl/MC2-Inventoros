@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "In attesa",
       "counted": "Contato",
+      "recount": "Da ricontare",
       "verified": "Verificato",
       "adjusted": "Rettificato"
     },
@@ -64,7 +65,11 @@
         "spot": "Controllo rapido di prodotti specifici"
       },
       "location": "Ubicazione del magazzino",
-      "locationHint": "Lascia vuoto per includere i prodotti di tutte le ubicazioni"
+      "locationHint": "Lascia vuoto per includere i prodotti di tutte le ubicazioni",
+      "warehouse": "Cosa contare",
+      "byLocation": "Prodotti per ubicazione",
+      "byLocationHint": "Prodotti senza varianti, per ubicazione.",
+      "warehouseHint": "Tutte le varianti di questo magazzino, tutti i proprietari insieme. Ogni riga viene confrontata con la giacenza nel momento in cui la conti."
     },
     "columns": {
       "auditNumber": "Inventario n.",
@@ -95,6 +100,8 @@
       "inStock": "disponibili",
       "fullAuditInfo": "Tutti i prodotti attivi verranno inclusi automaticamente in questo inventario. Potrai rivedere gli articoli dopo la creazione.",
       "fullAuditInfoAtLocation": "Tutti i prodotti attivi dell'ubicazione selezionata verranno inclusi automaticamente in questo inventario. Potrai rivedere gli articoli dopo la creazione.",
+      "selectProductsHintByWarehouse": "Scegli i prodotti di cui contare le varianti in questo magazzino.",
+      "fullAuditInfoByWarehouse": "Verranno contate in questo magazzino tutte le varianti di tutti i prodotti attivi con varianti.",
       "submit": "Crea inventario"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "({counted} di {total} contati)",
       "count": "Conta",
       "recount": "Riconta",
+      "byWarehouseHint": "Conteggio per variante e magazzino. Se la giacenza di una riga cambia dopo che l’hai contata, va ricontata prima di chiudere.",
       "countNotesPlaceholder": "Note (facoltativo)",
       "noItems": "Nessun articolo in questo inventario",
       "processing": "Elaborazione...",

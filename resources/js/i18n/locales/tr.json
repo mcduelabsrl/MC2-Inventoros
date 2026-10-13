@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "Beklemede",
       "counted": "Sayıldı",
+      "recount": "Count again",
       "verified": "Doğrulandı",
       "adjusted": "Düzeltildi"
     },
@@ -64,7 +65,11 @@
         "spot": "Belirli ürünlerin hızlı kontrolü"
       },
       "location": "Depo Konumu",
-      "locationHint": "Tüm konumlardaki ürünleri dahil etmek için boş bırakın"
+      "locationHint": "Tüm konumlardaki ürünleri dahil etmek için boş bırakın",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "Sayım #",
@@ -95,6 +100,8 @@
       "inStock": "stokta",
       "fullAuditInfo": "Tüm aktif ürünler bu sayıma otomatik olarak dahil edilecektir. Oluşturduktan sonra kalemleri gözden geçirebilirsiniz.",
       "fullAuditInfoAtLocation": "Seçili konumdaki tüm aktif ürünler bu sayıma otomatik olarak dahil edilecektir. Oluşturduktan sonra kalemleri gözden geçirebilirsiniz.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "Sayım Oluştur"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "({total} kalemden {counted} tanesi sayıldı)",
       "count": "Say",
       "recount": "Yeniden Say",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "Notlar (isteğe bağlı)",
       "noItems": "Bu sayımda kalem yok",
       "processing": "İşleniyor...",

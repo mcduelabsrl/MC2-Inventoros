@@ -14,6 +14,8 @@ const props = defineProps({
     locations: Array,
     products: Array,
     auditTypes: Object,
+    // Stock per warehouse: products with variants are counted by warehouse.
+    warehouses: { type: Array, default: () => [] },
 });
 
 const form = useForm({
@@ -21,6 +23,7 @@ const form = useForm({
     description: '',
     audit_type: 'cycle',
     warehouse_location_id: '',
+    warehouse_id: '',
     notes: '',
     product_ids: [],
 });
@@ -28,10 +31,23 @@ const form = useForm({
 const productSearch = ref('');
 const selectAllProducts = ref(false);
 
+// A count by warehouse counts the variants of products with variants; a
+// count by bin counts the other products.
+const byWarehouse = computed(() => props.warehouses.length > 0 && form.warehouse_id !== '');
+const scopedProducts = computed(() => props.warehouses.length === 0
+    ? props.products
+    : props.products.filter(p => Boolean(p.has_variants) === byWarehouse.value));
+
+const switchScope = () => {
+    form.product_ids = [];
+    selectAllProducts.value = false;
+    if (form.warehouse_id !== '') form.warehouse_location_id = '';
+};
+
 const filteredProducts = computed(() => {
-    if (!productSearch.value) return props.products;
+    if (!productSearch.value) return scopedProducts.value;
     const search = productSearch.value.toLowerCase();
-    return props.products.filter(
+    return scopedProducts.value.filter(
         p => p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search)
     );
 });
@@ -153,8 +169,31 @@ const fieldCheckbox = 'rounded border-border-subtle bg-surface-canvas text-brand
                             </p>
                         </div>
 
+                        <!-- Warehouse (stock per warehouse) -->
+                        <div v-if="warehouses.length">
+                            <label :class="fieldLabel">
+                                {{ t('stockAudits.fields.warehouse') }}
+                            </label>
+                            <select
+                                v-model="form.warehouse_id"
+                                :class="fieldInput"
+                                @change="switchScope"
+                            >
+                                <option value="">{{ t('stockAudits.fields.byLocation') }}</option>
+                                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
+                                    {{ warehouse.name }}
+                                </option>
+                            </select>
+                            <p :class="fieldHint">
+                                {{ byWarehouse ? t('stockAudits.fields.warehouseHint') : t('stockAudits.fields.byLocationHint') }}
+                            </p>
+                            <p v-if="form.errors.warehouse_id" :class="fieldError">
+                                {{ form.errors.warehouse_id }}
+                            </p>
+                        </div>
+
                         <!-- Location -->
-                        <div>
+                        <div v-if="!byWarehouse">
                             <label :class="fieldLabel">
                                 {{ t('stockAudits.fields.location') }}
                             </label>
@@ -201,7 +240,7 @@ const fieldCheckbox = 'rounded border-border-subtle bg-surface-canvas text-brand
                 <div class="px-5 pt-5">
                     <h3 class="text-sm font-semibold text-text-primary">{{ t('stockAudits.create.selectProducts') }}</h3>
                     <p class="mt-1 text-sm text-text-tertiary">
-                        {{ form.warehouse_location_id ? t('stockAudits.create.selectProductsHintAtLocation') : t('stockAudits.create.selectProductsHint') }}
+                        {{ byWarehouse ? t('stockAudits.create.selectProductsHintByWarehouse') : form.warehouse_location_id ? t('stockAudits.create.selectProductsHintAtLocation') : t('stockAudits.create.selectProductsHint') }}
                     </p>
                 </div>
                 <div class="p-5">
@@ -267,7 +306,7 @@ const fieldCheckbox = 'rounded border-border-subtle bg-surface-canvas text-brand
                     <div>
                         <p class="text-sm font-medium text-text-primary">{{ t('stockAudits.types.full') }}</p>
                         <p class="mt-1 text-xs text-text-secondary">
-                            {{ form.warehouse_location_id ? t('stockAudits.create.fullAuditInfoAtLocation') : t('stockAudits.create.fullAuditInfo') }}
+                            {{ byWarehouse ? t('stockAudits.create.fullAuditInfoByWarehouse') : form.warehouse_location_id ? t('stockAudits.create.fullAuditInfoAtLocation') : t('stockAudits.create.fullAuditInfo') }}
                         </p>
                     </div>
                 </div>
