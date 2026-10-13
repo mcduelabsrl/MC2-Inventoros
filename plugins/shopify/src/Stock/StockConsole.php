@@ -16,6 +16,7 @@ use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
  *
  *   shopify:stock-setup [--apply]      dry run (default) or set up, with comparison CSV
  *   shopify:stock-activate             turn on two-way sync after the comparison is approved
+ *   shopify:stock-pause                stop sending to Shopify (webhooks are still kept)
  *   shopify:stock-reconcile            read and check every level now
  *   shopify:routing-check              how Shopify assigned the open orders
  *   shopify:transfer-plan {name}       plan for a transfer (e.g. T0001) to reach the main warehouse
@@ -87,6 +88,18 @@ class StockConsole
 
             return 0;
         })->purpose('Turn on two-way stock sync with Shopify');
+
+        Artisan::command('shopify:stock-pause {--organization=}', function () use ($connection) {
+            /** @var Command $this */
+            $c = $connection($this);
+            if ($c === null) {
+                return 1;
+            }
+            $c->forceFill(['stock_sync_mode' => ShopifyConnection::STOCK_PAUSED])->save();
+            $this->info('Stock sync with Shopify is paused: nothing is sent, webhooks are still recorded. Run shopify:stock-activate to resume (changes made meanwhile are sent then).');
+
+            return 0;
+        })->purpose('Pause two-way stock sync with Shopify');
 
         Artisan::command('shopify:stock-reconcile {--organization=}', function () use ($connection) {
             /** @var Command $this */

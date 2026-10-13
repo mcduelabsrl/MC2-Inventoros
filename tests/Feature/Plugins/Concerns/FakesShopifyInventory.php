@@ -26,6 +26,9 @@ trait FakesShopifyInventory
     /** @var list<array{query: string, variables: array<string, mixed>}> mutations that changed something */
     protected array $applied = [];
 
+    /** @var array<string, array<string, mixed>> transfer name => GraphQL node */
+    protected array $transfers = [];
+
     /** Answer the next stock mutation with a transient HTTP 503. */
     protected int $failNext = 0;
 
@@ -67,6 +70,9 @@ trait FakesShopifyInventory
                 str_contains($query, 'inventorySetQuantities(') && str_contains($query, '$key') => $this->idempotentOnce('inventorySetQuantities', $variables, fn () => $this->setQ($variables['input'])),
                 str_contains($query, 'query FulfillmentOrders(') => ['data' => ['order' => ['id' => $variables['id'], 'fulfillmentOrders' => ['nodes' => $this->fos[$this->legacy($variables['id'])] ?? []]]]],
                 str_contains($query, 'fulfillmentOrderMove(') => ['data' => ['fulfillmentOrderMove' => $this->moveFo($variables)]],
+                str_contains($query, 'query Transfers(') => ['data' => ['inventoryTransfers' => ['nodes' => array_values(array_filter($this->transfers, fn ($t) => ltrim($t['name'], '#') === ltrim((string) $variables['query'], '#')))]]],
+                str_contains($query, 'inventoryTransferEdit(') => ['data' => ['inventoryTransferEdit' => $this->editTransfer($variables)]],
+                str_contains($query, 'inventoryShipmentReceive(') => ['data' => ['inventoryShipmentReceive' => $this->receiveShipment($variables)]],
                 default => null,
             };
         };
@@ -299,5 +305,53 @@ trait FakesShopifyInventory
     private function legacy(string $id): string
     {
         return str_contains($id, '/') ? substr($id, strrpos($id, '/') + 1) : $id;
+    }
+
+    private function editTransfer(array $variables): array
+    {
+        foreach ($this->transfers as $name => $transfer) {
+            if ($transfer['id'] !== $variables['id']) {
+                continue;
+            }
+            if ($transfer['status'] !== 'DRAFT') {
+                return ['inventoryTransfer' => null, 'userErrors' => [['field' => ['input', 'destinationId'], 'message' => 'Destination can only be changed on a draft transfer', 'code' => 'INVALID']]];
+            }
+            $this->transfers[$name]['destination'] = ['name' => 'x', 'location' => ['id' => $variables['input']['destinationId']]];
+            $this->applied[] = ['query' => 'inventoryTransferEdit', 'variables' => $variables];
+
+            return ['inventoryTransfer' => ['id' => $transfer['id'], 'status' => 'DRAFT', 'destination' => ['location' => ['id' => $variables['input']['destinationId']]]], 'userErrors' => []];
+        }
+
+        return ['inventoryTransfer' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]];
+    }
+
+    private function receiveShipment(array $variables): array
+    {
+        foreach ($this->transfers as $name => $transfer) {
+            foreach ($transfer['shipments']['nodes'] as $i => $shipment) {
+                if ($shipment['id'] !== $variables['id']) {
+                    continue;
+                }
+                $destination = $transfer['destination']['location']['id'];
+                foreach ($variables['lineItems'] as $line) {
+                    foreach ($shipment['lineItems']['nodes'] as $j => $node) {
+                        if ($node['id'] !== $line['shipmentLineItemId']) {
+                            continue;
+                        }
+                        $item = $node['inventoryItem']['id'];
+                        $this->inv[$item][$destination]['incoming'] -= (int) $line['quantity'];
+                        if ($line['reason'] === 'ACCEPTED') {
+                            $this->inv[$item][$destination]['available'] += (int) $line['quantity'];
+                        }
+                        $this->transfers[$name]['shipments']['nodes'][$i]['lineItems']['nodes'][$j]['unreceivedQuantity'] -= (int) $line['quantity'];
+                    }
+                }
+                $this->applied[] = ['query' => 'inventoryShipmentReceive', 'variables' => $variables];
+
+                return ['inventoryShipment' => ['id' => $shipment['id'], 'status' => 'RECEIVED'], 'userErrors' => []];
+            }
+        }
+
+        return ['inventoryShipment' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]];
     }
 }

@@ -24,8 +24,11 @@ use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockIssue;
 use Inventoros\Plugins\Shopify\Models\ShopifyStockOperation;
 use Inventoros\Plugins\Shopify\Models\ShopifyWebhookEvent;
+use Inventoros\Plugins\Shopify\ShopifyException;
 use Inventoros\Plugins\Shopify\Stock\OutboxProcessor;
+use Inventoros\Plugins\Shopify\Stock\RoutingCheck;
 use Inventoros\Plugins\Shopify\Stock\StockBootstrap;
+use Inventoros\Plugins\Shopify\Stock\TransferPlanner;
 use Tests\Feature\Api\Concerns\BuildsApiFixtures;
 use Tests\Feature\Plugins\Concerns\FakesShopifyInventory;
 use Tests\Feature\Plugins\Concerns\InteractsWithShopify;
@@ -483,5 +486,81 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->assertSame(ShopifyStockOperation::CONFIRMED, $operation->fresh()->status);
         $this->assertSame(3, $this->qty(self::I42, self::MC2, 'available'));
         $this->assertSame(0, ShopifyStockIssue::where('status', 'open')->count());
+    }
+
+    // ------------------------------------------------------------------
+    // Transfer #T0001, routing
+    // ------------------------------------------------------------------
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transferNode(string $status, int $unreceived): array
+    {
+        return [
+            'id' => 'gid://shopify/InventoryTransfer/1', 'name' => '#T0001', 'status' => $status, 'referenceName' => null,
+            'dateCreated' => now()->toIso8601String(), 'totalQuantity' => 2, 'receivedQuantity' => 2 - $unreceived,
+            'origin' => null,
+            'destination' => ['name' => 'VIA MARAGLIANO 7/1', 'location' => ['id' => self::SAX]],
+            'lineItems' => ['nodes' => [['id' => 'gid://shopify/InventoryTransferLineItem/1', 'title' => 'Sunday 42', 'totalQuantity' => 2, 'shippedQuantity' => 2, 'processableQuantity' => 0, 'inventoryItem' => ['id' => self::I42, 'sku' => 'SUN-42']]]],
+            'shipments' => ['nodes' => $status === 'IN_PROGRESS' ? [[
+                'id' => 'gid://shopify/InventoryShipment/1', 'name' => 'S1', 'status' => 'IN_TRANSIT',
+                'lineItems' => ['nodes' => [['id' => 'gid://shopify/InventoryShipmentLineItem/1', 'quantity' => 2, 'unreceivedQuantity' => $unreceived, 'acceptedQuantity' => 0, 'rejectedQuantity' => 0, 'inventoryItem' => ['id' => self::I42, 'sku' => 'SUN-42']]]],
+            ]] : []],
+        ];
+    }
+
+    public function test_a_draft_transfer_is_redirected_to_mc2_only_after_approval(): void
+    {
+        $this->setUpAndActivate();
+        $this->transfers['#T0001'] = $this->transferNode('DRAFT', 2);
+        $planner = new TransferPlanner($this->connection);
+
+        $plan = $planner->plan('T0001', $this->warehouse('MC2')->id);
+        $this->assertSame('DRAFT', $plan['status']);
+        $this->assertSame([], $this->appliedTo('inventoryTransferEdit'), 'Nothing changes before approval.');
+
+        $planner->approve(ShopifyStockOperation::findOrFail($plan['operations'][0]), $this->admin->id);
+        $this->assertSame(self::MC2, $this->transfers['#T0001']['destination']['location']['id']);
+    }
+
+    public function test_a_transfer_in_transit_is_received_at_mc2_without_counting_it_twice(): void
+    {
+        $this->setUpAndActivate();
+        // Shopify shows 2 pairs incoming at Via Maragliano.
+        $this->shopifyAdjust(self::I42, self::SAX, 'incoming', 2);
+        $this->transfers['#T0001'] = $this->transferNode('IN_PROGRESS', 2);
+        $planner = new TransferPlanner($this->connection);
+
+        $plan = $planner->plan('T0001', $this->warehouse('MC2')->id);
+        $this->assertCount(1, $plan['operations']);
+        $this->assertStringContainsString('REJECTED', implode(' ', $plan['plan']));
+
+        $planner->approve(ShopifyStockOperation::findOrFail($plan['operations'][0]), $this->admin->id);
+
+        // Not in Via Maragliano's stock, no longer incoming there; at MC2 once.
+        $this->assertSame(3, $this->qty(self::I42, self::SAX, 'available'));
+        $this->assertSame(0, $this->qty(self::I42, self::SAX, 'incoming'));
+        $this->assertSame(4, $this->qty(self::I42, self::MC2, 'available'));
+        $this->assertSame(4, $this->local($this->size42, 'MC2')['on_hand']);
+        $this->assertSame(3, $this->local($this->size42, 'SAX')['on_hand']);
+
+        // Approving again does nothing.
+        $this->expectException(ShopifyException::class);
+        $planner->approve(ShopifyStockOperation::findOrFail($plan['operations'][0]), $this->admin->id);
+    }
+
+    public function test_the_routing_check_flags_orders_assigned_to_saxone_while_mc2_has_the_pairs(): void
+    {
+        $this->setUpAndActivate();
+        $this->shopifySale(self::I42, self::SAX, 1);
+        $this->fulfilmentOrders('9001', [['location' => self::SAX, 'lines' => [['item' => self::I42, 'qty' => 1, 'line_item_id' => '91']]]]);
+        $this->postWebhook('orders/create', $this->orderPayload([['id' => 91, 'sku' => 'SUN-42', 'title' => 'Sunday 42', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00']],
+            ['id' => 9001, 'name' => '#9001', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-9001');
+
+        $rows = (new RoutingCheck($this->connection))->run();
+
+        $this->assertSame('check_routing', $rows[0]['verdict']);
+        $this->assertSame([], $this->appliedTo('fulfillmentOrderMove'), 'The check changes nothing.');
     }
 }

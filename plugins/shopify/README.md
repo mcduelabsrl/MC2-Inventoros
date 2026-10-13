@@ -31,7 +31,7 @@ Shopify no longer lets you create custom apps in the store admin. Create one in 
 2. Under **Versions**, create a version and paste this list into its **Scopes** field, exactly as written (comma-separated, no spaces):
 
    ```text
-   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders
+   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_inventory_transfers,write_inventory_transfers,read_inventory_shipments,write_inventory_shipments_received_items
    ```
 
    - **Required:** the first five, for orders, stock and locations.
@@ -160,3 +160,31 @@ Updating from 1.0.0: copy the new files over the plugin. The new columns are add
   - `ShopifyClient` talks to the Admin GraphQL API.
 - UI: `ui/src/` is built to `dist/` with `npm run build:plugin:shopify` from the repository root. Bump `version` in `plugin.json` whenever the bundle changes.
 - Tests: `php artisan test tests/Feature/Plugins`. Shopify is faked with `Http::fake()` (see `tests/Feature/Plugins/Concerns/InteractsWithShopify.php`).
+
+
+## Stock per warehouse, both ways (2.0)
+
+For a store with more than one location whose stock lives in Inventoros per variant and warehouse (see *Stock by warehouse* in Inventoros). In this mode the 1.x push of available totals is off for good: it would pour the total of every warehouse into one location.
+
+- **Per location, per variant.** Each mapped Shopify location shows exactly its warehouse's figures: on hand, committed, reserved, damaged, quality control, incoming. Units committed to orders taken outside Shopify are held there as *reserved*; returns waiting for inspection as *quality control*.
+- **Inventoros to Shopify.** Every operation made in Inventoros becomes tracked Shopify mutations (the outbox, `shopify_stock_operations`): `inventoryAdjustQuantities`, `inventoryMoveQuantities` (state changes, so on hand never jumps) or `inventorySetQuantities` (counts), each with `changeFromQuantity` (the figure both sides last agreed on) and a fixed `@idempotent` key reused on every retry. A movement whose base figure moved meanwhile is re-based and sent again; a count is refused and becomes a conflict for the operator. Only a confirmed operation counts as synced; until then the level shows *pending*.
+- **Shopify to Inventoros.** `inventory_levels/update` webhooks (and a nightly read of every level) make Inventoros read the level again and compare what each side changed since they last agreed. A change made in Shopify is applied in Inventoros as an *external* operation, never sent back; the echo of our own change is recognised. A difference in committed units waits for the orders to be processed; if it persists it becomes an issue.
+- **Webhooks** are stored before processing (`shopify_webhook_events`), deduplicated on `X-Shopify-Webhook-Id`, checked for the shop domain, retried, and processed in any order (state is always re-read).
+- **Orders** commit their units where Shopify assigned them (its fulfilment orders) and stay aligned when Shopify moves them. An order split across locations is consolidated in the main warehouse before its single shipment: the units leave the origin, the fulfilment order is moved, the units arrive, in an order that never shows a pair for sale twice.
+- **Returns** restocked by a Shopify refund are corrected to *quality control* in the returns warehouse, with their owner; they go back on sale after inspection.
+- **Issues** (conflicts, failed operations, unexplained differences) are listed on the *Stock by warehouse* screen with their decisions: use Shopify's figures, send Inventoros's, re-align the order, retry.
+
+### Commands
+
+```text
+php artisan shopify:stock-setup [--apply]     dry run (default) or set up; writes a comparison CSV, never changes Shopify
+php artisan shopify:stock-activate            turn on two-way sync after the comparison is approved
+php artisan shopify:stock-pause               stop sending to Shopify (webhooks are still recorded)
+php artisan shopify:stock-reconcile           read and check every level now
+php artisan shopify:routing-check             how Shopify assigned the open orders (changes nothing)
+php artisan shopify:transfer-plan T0001       plan for a transfer to reach the main warehouse (changes nothing)
+php artisan shopify:transfer-approve ID ...   carry out an approved plan step
+php artisan shopify:purge-legacy-stock-jobs   remove 1.x stock pushes waiting in the database queue
+```
+
+Order routing (location priority, minimising split shipments) is a store setting the Admin API does not expose: set it in Shopify (main location first) and check its effect with `shopify:routing-check`.
