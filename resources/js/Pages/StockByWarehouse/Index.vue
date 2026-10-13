@@ -77,7 +77,7 @@ const toggle = async (row) => {
 // Actions
 // ------------------------------------------------------------------
 
-const modal = ref(null); // 'adjust' | 'inspect' | 'state' | 'transfer' | 'owners'
+const modal = ref(null); // 'adjust' | 'inspect' | 'state' | 'transfer' | 'owners' | 'ship' | 'receive'
 const current = ref(null);
 const form = reactive({});
 const busy = ref(false);
@@ -99,6 +99,8 @@ const open = (kind, row = null, preset = {}) => {
         to_warehouse_id: firstWarehouse,
         notes: '',
         lines: [],
+        carrier: '',
+        tracking_number: '',
     }, preset);
     modal.value = kind;
 };
@@ -137,6 +139,14 @@ const submit = () => {
             from_warehouse_id: form.from_warehouse_id, to_warehouse_id: form.to_warehouse_id, notes: form.notes,
             lines: form.lines.map((l) => ({ product_variant_id: l.product_variant_id, owner_id: ownerValue(l.owner_id), quantity: Number(l.quantity) })),
         }, done);
+    } else if (modal.value === 'ship') {
+        router.post(route('stock-by-warehouse.transfers.ship', form.transfer_id), {
+            carrier: form.carrier || null, tracking_number: form.tracking_number || null,
+        }, done);
+    } else if (modal.value === 'receive') {
+        router.post(route('stock-by-warehouse.transfers.receive', form.transfer_id), {
+            lines: form.lines.map((l) => ({ line_id: l.line_id, accepted: Number(l.accepted) || 0, rejected: Number(l.rejected) || 0 })),
+        }, done);
     } else if (modal.value === 'owners') {
         router.post(route('stock-by-warehouse.owners'), {
             lines: form.lines.filter((l) => Number(l.quantity) > 0).map((l) => ({
@@ -145,6 +155,27 @@ const submit = () => {
             })),
         }, done);
     }
+};
+
+// The three steps of a transfer: prepared (set aside at the origin),
+// shipped (incoming at the destination), received (accepted / refused).
+const outstanding = (line) => line.quantity - (line.received_quantity || 0) - (line.rejected_quantity || 0);
+const transferLabel = (tr) => `${tr.reference}: ${tr.from_warehouse?.name} → ${tr.to_warehouse?.name}`;
+const statusVariant = (status) => ({ ready: 'warning', in_transit: 'info', completed: 'success', cancelled: 'neutral' }[status] || 'neutral');
+
+const openShip = (tr) => open('ship', null, { transfer_id: tr.id, label: transferLabel(tr), carrier: tr.carrier || '', tracking_number: tr.tracking_number || '' });
+
+const openReceive = (tr) => open('receive', null, {
+    transfer_id: tr.id,
+    label: transferLabel(tr),
+    lines: tr.lines.filter((l) => outstanding(l) > 0).map((l) => ({ line_id: l.id, label: `${l.variant?.sku}`, outstanding: outstanding(l), accepted: outstanding(l), rejected: 0 })),
+});
+
+const cancelTransfer = (tr) => {
+    if (!window.confirm(t('stockByWarehouse.transfers.confirmCancel', { reference: tr.reference }))) {
+        return;
+    }
+    router.post(route('stock-by-warehouse.transfers.cancel', tr.id), {}, { preserveScroll: true });
 };
 
 // Selection for transfers and owner assignment of several variants.
@@ -389,18 +420,37 @@ const tdClass = 'px-3 py-2 text-sm text-text-primary align-top';
                 <thead><tr>
                     <th :class="thClass">{{ t('stockByWarehouse.transfers.reference') }}</th><th :class="thClass">{{ t('stockByWarehouse.transfers.route') }}</th>
                     <th :class="thClass">{{ t('stockByWarehouse.transfers.pairs') }}</th><th :class="thClass">{{ t('stockByWarehouse.transfers.order') }}</th>
-                    <th :class="thClass">{{ t('stockByWarehouse.transfers.channel') }}</th><th :class="thClass"></th>
+                    <th :class="thClass">{{ t('stockByWarehouse.transfers.status') }}</th>
+                    <th :class="thClass">{{ t('stockByWarehouse.transfers.channel') }}</th><th :class="thClass"></th><th :class="thClass"></th>
                 </tr></thead>
                 <tbody class="divide-y divide-border-subtle">
                     <tr v-for="tr in transfers" :key="tr.id">
                         <td :class="tdClass" class="font-mono text-xs">{{ tr.reference }}</td>
                         <td :class="tdClass">{{ tr.from_warehouse?.name }} → {{ tr.to_warehouse?.name }}</td>
-                        <td :class="tdClass">{{ tr.lines.map((l) => `${l.variant?.sku} × ${l.quantity}`).join(', ') }}</td>
+                        <td :class="tdClass">
+                            <div v-for="l in tr.lines" :key="l.id">
+                                {{ l.variant?.sku }} × {{ l.quantity }}
+                                <span v-if="l.received_quantity || l.rejected_quantity" class="text-xs text-text-tertiary">
+                                    ({{ t('stockByWarehouse.transfers.receivedOf', { accepted: l.received_quantity || 0, rejected: l.rejected_quantity || 0 }) }})
+                                </span>
+                            </div>
+                        </td>
                         <td :class="tdClass">{{ tr.order?.external_reference || tr.order?.order_number || '-' }}</td>
+                        <td :class="tdClass">
+                            <Badge size="sm" :variant="statusVariant(tr.status)">{{ t('stockByWarehouse.transfers.statuses.' + tr.status) }}</Badge>
+                            <div v-if="tr.tracking_number" class="text-xs text-text-tertiary">{{ tr.carrier }} {{ tr.tracking_number }}</div>
+                        </td>
                         <td :class="tdClass">
                             <Badge size="sm" :variant="channelVariant(tr.channel_status)" :title="tr.channel_error || ''">{{ t('stockByWarehouse.transfers.channelStatus.' + tr.channel_status) }}</Badge>
                         </td>
-                        <td :class="tdClass" class="text-xs text-text-tertiary">{{ displayDate(tr.completed_at) }} · {{ tr.user?.name }}</td>
+                        <td :class="tdClass" class="text-xs text-text-tertiary">{{ displayDate(tr.completed_at || tr.shipped_at || tr.created_at) }} · {{ tr.user?.name }}</td>
+                        <td :class="tdClass" class="whitespace-nowrap text-right">
+                            <template v-if="can('transfer_stock')">
+                                <Button v-if="tr.status === 'ready'" size="xs" variant="secondary" @click="openShip(tr)">{{ t('stockByWarehouse.transfers.ship') }}</Button>
+                                <Button v-if="tr.status === 'ready'" size="xs" variant="ghost" @click="cancelTransfer(tr)">{{ t('stockByWarehouse.transfers.cancel') }}</Button>
+                                <Button v-if="tr.status === 'in_transit'" size="xs" variant="secondary" @click="openReceive(tr)">{{ t('stockByWarehouse.transfers.receive') }}</Button>
+                            </template>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -410,7 +460,8 @@ const tdClass = 'px-3 py-2 text-sm text-text-primary align-top';
         <Modal :show="modal !== null" max-width="2xl" @close="modal = null">
             <form class="space-y-4 p-6" @submit.prevent="submit">
                 <h2 class="text-base font-semibold text-text-primary">
-                    {{ t('stockByWarehouse.actions.' + ({ adjust: 'adjust', inspect: 'inspect', state: 'state', transfer: 'transfer', owners: 'assignOwner' }[modal] || 'adjust')) }}
+                    {{ t('stockByWarehouse.actions.' + ({ adjust: 'adjust', inspect: 'inspect', state: 'state', transfer: 'transfer', owners: 'assignOwner', ship: 'shipTransfer', receive: 'receiveTransfer' }[modal] || 'adjust')) }}
+                    <span v-if="['ship', 'receive'].includes(modal)" class="text-sm font-normal text-text-secondary">: {{ form.label }}</span>
                     <span v-if="current" class="text-sm font-normal text-text-secondary">: {{ current.model }} {{ optionsLabel(current) }} ({{ current.sku }})</span>
                 </h2>
 
@@ -491,6 +542,28 @@ const tdClass = 'px-3 py-2 text-sm text-text-primary align-top';
                         </div>
                     </div>
                     <label class="block text-sm">{{ t('stockByWarehouse.form.notes') }}<input v-model="form.notes" type="text" :class="inputClass" maxlength="1000" /></label>
+                </template>
+
+                <template v-if="modal === 'ship'">
+                    <p class="text-xs text-text-tertiary">{{ t('stockByWarehouse.form.shipHint') }}</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="text-sm">{{ t('stockByWarehouse.form.carrier') }}<input v-model="form.carrier" type="text" :class="inputClass" maxlength="100" /></label>
+                        <label class="text-sm">{{ t('stockByWarehouse.form.trackingNumber') }}<input v-model="form.tracking_number" type="text" :class="inputClass" maxlength="100" /></label>
+                    </div>
+                </template>
+
+                <template v-if="modal === 'receive'">
+                    <p class="text-xs text-text-tertiary">{{ t('stockByWarehouse.form.receiveHint') }}</p>
+                    <div class="grid grid-cols-6 gap-2 text-xs font-semibold uppercase text-text-tertiary">
+                        <div class="col-span-2"></div><div class="col-span-1">{{ t('stockByWarehouse.form.outstanding') }}</div>
+                        <div class="col-span-1">{{ t('stockByWarehouse.form.accepted') }}</div><div class="col-span-2">{{ t('stockByWarehouse.form.rejected') }}</div>
+                    </div>
+                    <div v-for="(line, i) in form.lines" :key="i" class="grid grid-cols-6 items-center gap-2 text-sm">
+                        <div class="col-span-2 font-mono text-xs">{{ line.label }}</div>
+                        <div class="col-span-1">{{ line.outstanding }}</div>
+                        <input v-model="line.accepted" type="number" min="0" :max="line.outstanding" :class="inputClass" class="col-span-1" />
+                        <input v-model="line.rejected" type="number" min="0" :max="line.outstanding" :class="inputClass" class="col-span-2" />
+                    </div>
                 </template>
 
                 <template v-if="modal === 'owners'">

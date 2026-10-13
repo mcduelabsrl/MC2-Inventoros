@@ -200,7 +200,9 @@ class VariantStockController extends Controller
     }
 
     /**
-     * An immediate transfer between warehouses, one confirmation.
+     * Step 1 of a transfer: the units are set aside at the origin. They
+     * leave with step 2 (ship) and enter the destination with step 3
+     * (receive).
      */
     public function transfer(Request $request): RedirectResponse
     {
@@ -219,7 +221,7 @@ class VariantStockController extends Controller
                 $this->authorizeVariant($request, ProductVariant::findOrFail($line['product_variant_id']));
                 $this->owner($request, $line['owner_id'] ?? null);
             }
-            $transfer = $this->transfers->transfer(
+            $transfer = $this->transfers->prepare(
                 (int) $request->user()->organization_id,
                 $this->warehouse($request, (int) $data['from_warehouse_id']),
                 $this->warehouse($request, (int) $data['to_warehouse_id']),
@@ -228,7 +230,66 @@ class VariantStockController extends Controller
                 $data['notes'] ?? null,
             );
 
-            return __('Transfer :reference done.', ['reference' => $transfer->reference]);
+            return __('Transfer :reference prepared: the units are set aside until it is shipped.', ['reference' => $transfer->reference]);
+        });
+    }
+
+    /**
+     * Step 2: the units leave the origin and are incoming at the destination.
+     */
+    public function shipTransfer(Request $request, VariantStockTransfer $transfer): RedirectResponse
+    {
+        $this->authorizeTransfer($request, $transfer);
+        $data = $request->validate([
+            'carrier' => ['nullable', 'string', 'max:100'],
+            'tracking_number' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        return $this->attempt(function () use ($request, $transfer, $data) {
+            $this->transfers->ship($transfer, $request->user(), $data['carrier'] ?? null, $data['tracking_number'] ?? null);
+
+            return __('Transfer :reference shipped.', ['reference' => $transfer->reference]);
+        });
+    }
+
+    /**
+     * Step 3: per line, units accepted and refused. Partial receipts are
+     * allowed.
+     */
+    public function receiveTransfer(Request $request, VariantStockTransfer $transfer): RedirectResponse
+    {
+        $this->authorizeTransfer($request, $transfer);
+        $data = $request->validate([
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.line_id' => ['required', 'integer'],
+            'lines.*.accepted' => ['required', 'integer', 'min:0'],
+            'lines.*.rejected' => ['required', 'integer', 'min:0'],
+        ]);
+
+        return $this->attempt(function () use ($request, $transfer, $data) {
+            $receipt = [];
+            foreach ($data['lines'] as $line) {
+                $receipt[(int) $line['line_id']] = ['accepted' => (int) $line['accepted'], 'rejected' => (int) $line['rejected']];
+            }
+            $done = $this->transfers->receive($transfer, $receipt, $request->user());
+
+            return $done->status === VariantStockTransfer::COMPLETED
+                ? __('Transfer :reference received.', ['reference' => $transfer->reference])
+                : __('Transfer :reference partly received.', ['reference' => $transfer->reference]);
+        });
+    }
+
+    /**
+     * Cancel a transfer not shipped yet: the units are free again.
+     */
+    public function cancelTransfer(Request $request, VariantStockTransfer $transfer): RedirectResponse
+    {
+        $this->authorizeTransfer($request, $transfer);
+
+        return $this->attempt(function () use ($request, $transfer) {
+            $this->transfers->cancel($transfer, $request->user());
+
+            return __('Transfer :reference cancelled.', ['reference' => $transfer->reference]);
         });
     }
 
@@ -420,6 +481,11 @@ class VariantStockController extends Controller
     private function authorizeVariant(Request $request, ProductVariant $variant): void
     {
         abort_unless((int) $variant->organization_id === (int) $request->user()->organization_id, 404);
+    }
+
+    private function authorizeTransfer(Request $request, VariantStockTransfer $transfer): void
+    {
+        abort_unless((int) $transfer->organization_id === (int) $request->user()->organization_id, 404);
     }
 
     private function warehouse(Request $request, int $warehouseId): int

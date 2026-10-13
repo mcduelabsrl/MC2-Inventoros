@@ -153,6 +153,9 @@ Route::post('/stock-by-warehouse/variants/{variant}/adjust', [VariantStockContro
 Route::post('/stock-by-warehouse/variants/{variant}/inspect', [VariantStockController::class, 'inspect'])->name('stock-by-warehouse.inspect')->middleware('permission:manage_stock');
 Route::post('/stock-by-warehouse/variants/{variant}/state', [VariantStockController::class, 'state'])->name('stock-by-warehouse.state')->middleware('permission:manage_stock');
 Route::post('/stock-by-warehouse/transfer', [VariantStockController::class, 'transfer'])->name('stock-by-warehouse.transfer')->middleware('permission:transfer_stock');
+Route::post('/stock-by-warehouse/transfers/{transfer}/ship', [VariantStockController::class, 'shipTransfer'])->name('stock-by-warehouse.transfers.ship')->middleware('permission:transfer_stock');
+Route::post('/stock-by-warehouse/transfers/{transfer}/receive', [VariantStockController::class, 'receiveTransfer'])->name('stock-by-warehouse.transfers.receive')->middleware('permission:transfer_stock');
+Route::post('/stock-by-warehouse/transfers/{transfer}/cancel', [VariantStockController::class, 'cancelTransfer'])->name('stock-by-warehouse.transfers.cancel')->middleware('permission:transfer_stock');
 Route::post('/stock-by-warehouse/owners', [VariantStockController::class, 'owners'])->name('stock-by-warehouse.owners')->middleware('permission:manage_stock');
 Route::post('/orders/{order}/consolidate', [VariantStockController::class, 'consolidate'])->name('orders.consolidate')->middleware('permission:transfer_stock');
 

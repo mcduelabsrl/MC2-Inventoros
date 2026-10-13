@@ -68,15 +68,33 @@ final class StockByWarehouseScreenTest extends TestCase
         $this->assertSame(4, $this->levelAt($this->size42, $this->mc2)['on_hand']);
     }
 
-    public function test_an_immediate_transfer_and_an_owner_assignment(): void
+    public function test_a_transfer_in_three_steps_and_an_owner_assignment(): void
     {
         $this->post(route('stock-by-warehouse.transfer'), [
             'from_warehouse_id' => $this->saxone->id, 'to_warehouse_id' => $this->mc2->id,
             'lines' => [['product_variant_id' => $this->size42->id, 'owner_id' => $this->ownerSaxone->id, 'quantity' => 1]],
         ])->assertSessionHas('success');
 
-        $this->assertSame(1, VariantStockTransfer::count());
+        $transfer = VariantStockTransfer::sole();
+        $this->assertSame('ready', $transfer->status);
+        $this->assertSame(2, $this->levelAt($this->size42, $this->mc2)['on_hand']);
+
+        $this->get(route('stock-by-warehouse.index'))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('transfers.0.status', 'ready'));
+
+        $this->post(route('stock-by-warehouse.transfers.ship', $transfer), ['carrier' => 'BRT', 'tracking_number' => 'X1'])->assertSessionHas('success');
+        $this->assertSame('in_transit', $transfer->fresh()->status);
+        $this->assertSame('X1', $transfer->fresh()->tracking_number);
+
+        $line = $transfer->lines()->sole();
+        $this->post(route('stock-by-warehouse.transfers.receive', $transfer), [
+            'lines' => [['line_id' => $line->id, 'accepted' => 1, 'rejected' => 0]],
+        ])->assertSessionHas('success');
+        $this->assertSame('completed', $transfer->fresh()->status);
         $this->assertSame(3, $this->levelAt($this->size42, $this->mc2)['on_hand']);
+
+        // A completed transfer cannot be cancelled.
+        $this->post(route('stock-by-warehouse.transfers.cancel', $transfer))->assertSessionHas('error');
 
         $this->post(route('stock-by-warehouse.owners'), [
             'lines' => [['product_variant_id' => $this->size42->id, 'warehouse_id' => $this->mc2->id, 'from_owner_id' => null, 'to_owner_id' => $this->ownerMc2->id, 'quantity' => 2]],

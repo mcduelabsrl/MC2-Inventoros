@@ -13,8 +13,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
- * An immediate move of variant units from one warehouse to another,
- * confirmed once by the operator. Ownership never changes in a transfer.
+ * A move of variant units from one warehouse to another, in three steps the
+ * operator confirms: prepared (units set aside at the origin), shipped
+ * (they leave; incoming at the destination), received (they arrive; some
+ * may be refused). Ownership never changes in a transfer.
  *
  * channel_status tracks the sales channel side (e.g. Shopify):
  * not_applicable, pending, synced, error, conflict.
@@ -44,12 +46,26 @@ class VariantStockTransfer extends Model
 
     public const CHANNEL_CONFLICT = 'conflict';
 
+    public const READY = 'ready';
+
+    public const IN_TRANSIT = 'in_transit';
+
+    public const COMPLETED = 'completed';
+
+    public const CANCELLED = 'cancelled';
+
     protected $fillable = [
         'organization_id', 'reference', 'from_warehouse_id', 'to_warehouse_id', 'order_id',
-        'user_id', 'status', 'channel_status', 'channel_error', 'notes', 'completed_at',
+        'user_id', 'status', 'channel_status', 'channel_error', 'notes', 'carrier', 'tracking_number',
+        'shipped_by', 'received_by', 'shipped_at', 'received_at', 'cancelled_at', 'completed_at',
     ];
 
-    protected $casts = ['completed_at' => 'datetime'];
+    protected $casts = [
+        'shipped_at' => 'datetime',
+        'received_at' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'completed_at' => 'datetime',
+    ];
 
     /**
      * @return HasMany<VariantStockTransferLine, $this>

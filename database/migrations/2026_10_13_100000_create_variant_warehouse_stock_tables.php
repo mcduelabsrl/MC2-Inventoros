@@ -114,12 +114,23 @@ return new class extends Migration
             $table->foreignId('to_warehouse_id')->constrained('warehouses');
             $table->foreignId('order_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            // Local side is atomic, so a transfer is always completed here;
-            // channel_status says whether the sales channel agrees yet.
-            $table->string('status', 20)->default('completed');
+            // ready: prepared, units set aside at the origin; in_transit:
+            // left the origin, incoming at the destination; completed: all
+            // received (or refused); cancelled: called off before leaving.
+            // Each step is one operator confirmation. A consolidation for an
+            // order is completed at once. channel_status says whether the
+            // sales channel has confirmed the latest step.
+            $table->string('status', 20)->default('ready');
             $table->string('channel_status', 20)->default('not_applicable');
             $table->text('channel_error')->nullable();
             $table->text('notes')->nullable();
+            $table->string('carrier')->nullable();
+            $table->string('tracking_number')->nullable();
+            $table->foreignId('shipped_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('received_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('shipped_at')->nullable();
+            $table->timestamp('received_at')->nullable();
+            $table->timestamp('cancelled_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
 
@@ -132,6 +143,10 @@ return new class extends Migration
             $table->foreignId('product_variant_id')->constrained('product_variants')->cascadeOnDelete();
             $table->foreignId('stock_owner_id')->nullable()->constrained('stock_owners')->nullOnDelete();
             $table->unsignedInteger('quantity');
+            $table->unsignedInteger('received_quantity')->default(0);
+            // Units that did not arrive or arrived unusable: they never
+            // enter the destination's stock.
+            $table->unsignedInteger('rejected_quantity')->default(0);
             // Units moved while committed to an order (consolidation): they
             // stay committed at the destination.
             $table->boolean('committed')->default(false);

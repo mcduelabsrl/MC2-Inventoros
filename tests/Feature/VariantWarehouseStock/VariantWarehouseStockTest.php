@@ -152,6 +152,67 @@ final class VariantWarehouseStockTest extends TestCase
         $this->assertTrue($levels->every(fn ($l) => $l->stock_owner_id === $this->ownerSaxone->id));
     }
 
+    public function test_a_transfer_goes_through_prepared_shipped_and_received_with_refused_units(): void
+    {
+        $this->putStock($this->size42, $this->saxone, 3, $this->ownerSaxone);
+        $transfers = app(VariantTransferService::class);
+
+        // 1. Prepared: set aside at the origin, no longer for sale.
+        $transfer = $transfers->prepare($this->org->id, $this->saxone->id, $this->mc2->id, [
+            ['product_variant_id' => $this->size42->id, 'owner_id' => $this->ownerSaxone->id, 'quantity' => 2],
+        ], $this->admin);
+        $this->assertSame('ready', $transfer->status);
+        $this->assertSame(['on_hand' => 3, 'committed' => 2, 'available' => 1],
+            array_intersect_key($this->levelAt($this->size42, $this->saxone), array_flip(['on_hand', 'committed', 'available'])));
+        $this->assertSame(1, $this->size42->fresh()->stock);
+
+        // 2. Shipped: they leave the origin and are incoming at MC2.
+        $transfers->ship($transfer, $this->admin, 'BRT', '123');
+        $this->assertSame('in_transit', $transfer->fresh()->status);
+        $this->assertSame(1, $this->levelAt($this->size42, $this->saxone)['on_hand']);
+        $this->assertSame(0, $this->levelAt($this->size42, $this->saxone)['committed']);
+        $this->assertSame(2, $this->levelAt($this->size42, $this->mc2)['incoming']);
+        $this->assertSame(0, $this->levelAt($this->size42, $this->mc2)['on_hand']);
+
+        // 3. Received in two goes: one accepted now, one refused later.
+        $line = $transfer->lines()->sole();
+        $transfers->receive($transfer, [$line->id => ['accepted' => 1, 'rejected' => 0]], $this->admin);
+        $this->assertSame('in_transit', $transfer->fresh()->status);
+        $this->assertSame(1, $this->levelAt($this->size42, $this->mc2)['on_hand']);
+        $this->assertSame(1, $this->levelAt($this->size42, $this->mc2)['incoming']);
+
+        try {
+            $transfers->receive($transfer, [$line->id => ['accepted' => 2, 'rejected' => 0]], $this->admin);
+            $this->fail('More than is outstanding was received.');
+        } catch (BusinessRuleException) {
+        }
+
+        $transfers->receive($transfer, [$line->id => ['accepted' => 0, 'rejected' => 1]], $this->admin);
+        $this->assertSame('completed', $transfer->fresh()->status);
+        $this->assertSame(0, $this->levelAt($this->size42, $this->mc2)['incoming']);
+        $this->assertSame(1, $this->levelAt($this->size42, $this->mc2)['on_hand']);
+        // The refused pair never entered: the total is what is really there.
+        $this->assertSame(2, $this->size42->fresh()->stock);
+        $this->assertSame(['transfer_prepare', 'transfer_ship', 'transfer_receive', 'transfer_receive'],
+            VariantStockOperation::where('transfer_id', $transfer->id)->orderBy('id')->pluck('type')->all());
+    }
+
+    public function test_a_prepared_transfer_can_be_cancelled_but_not_once_shipped(): void
+    {
+        $this->putStock($this->size42, $this->saxone, 2);
+        $transfers = app(VariantTransferService::class);
+
+        $first = $transfers->prepare($this->org->id, $this->saxone->id, $this->mc2->id, [['product_variant_id' => $this->size42->id, 'quantity' => 2]], $this->admin);
+        $transfers->cancel($first, $this->admin);
+        $this->assertSame('cancelled', $first->fresh()->status);
+        $this->assertSame(2, $this->levelAt($this->size42, $this->saxone)['available']);
+
+        $second = $transfers->prepare($this->org->id, $this->saxone->id, $this->mc2->id, [['product_variant_id' => $this->size42->id, 'quantity' => 1]], $this->admin);
+        $transfers->ship($second, $this->admin);
+        $this->expectException(BusinessRuleException::class);
+        $transfers->cancel($second, $this->admin);
+    }
+
     public function test_a_transfer_cannot_move_units_that_are_not_free(): void
     {
         $this->putStock($this->size42, $this->saxone, 1);

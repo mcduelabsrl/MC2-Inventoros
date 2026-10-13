@@ -41,7 +41,7 @@ trait FakesShopifyInventory
     protected function fakeInventory(): void
     {
         $this->shopifyExtra = function (string $query, array $variables): ?array {
-            if ($this->failNext > 0 && preg_match('/inventoryAdjustQuantities|inventoryMoveQuantities|inventorySetQuantities/', $query)) {
+            if ($this->failNext > 0 && preg_match('/inventoryAdjustQuantities|inventoryMoveQuantities|inventorySetQuantities|inventoryTransferCreateAsReadyToShip|inventoryShipmentCreateInTransit/', $query)) {
                 $this->failNext--;
 
                 return ['errors' => [['message' => 'Throttled', 'extensions' => ['code' => 'THROTTLED']]]];
@@ -77,6 +77,9 @@ trait FakesShopifyInventory
                 str_contains($query, 'query Transfers(') => ['data' => ['inventoryTransfers' => ['nodes' => array_values(array_filter($this->transfers, fn ($t) => ltrim($t['name'], '#') === ltrim((string) $variables['query'], '#')))]]],
                 str_contains($query, 'inventoryTransferEdit(') => ['data' => ['inventoryTransferEdit' => $this->editTransfer($variables)]],
                 str_contains($query, 'inventoryShipmentReceive(') => ['data' => ['inventoryShipmentReceive' => $this->receiveShipment($variables)]],
+                str_contains($query, 'inventoryTransferCreateAsReadyToShip(') => $this->idempotentOnce('inventoryTransferCreateAsReadyToShip', $variables, fn () => $this->createTransferQ($variables['input'])),
+                str_contains($query, 'inventoryShipmentCreateInTransit(') => $this->idempotentOnce('inventoryShipmentCreateInTransit', $variables, fn () => $this->shipTransferQ($variables['input'])),
+                str_contains($query, 'inventoryTransferCancel(') => ['data' => ['inventoryTransferCancel' => $this->cancelTransferQ($variables['id'])]],
                 default => null,
             };
         };
@@ -357,6 +360,83 @@ trait FakesShopifyInventory
         }
 
         return ['inventoryShipment' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]];
+    }
+
+    /**
+     * A transfer created ready to ship: the units are committed at the
+     * origin.
+     */
+    private function createTransferQ(array $input): array
+    {
+        $id = 'gid://shopify/InventoryTransfer/'.(count($this->transfers) + 100);
+        $name = '#T'.str_pad((string) (count($this->transfers) + 100), 4, '0', STR_PAD_LEFT);
+        $lines = [];
+        foreach ($input['lineItems'] as $i => $line) {
+            $this->inv[$line['inventoryItemId']][$input['originLocationId']]['available'] -= (int) $line['quantity'];
+            $this->inv[$line['inventoryItemId']][$input['originLocationId']]['committed'] += (int) $line['quantity'];
+            $lines[] = ['id' => $id.'/line/'.$i, 'totalQuantity' => (int) $line['quantity'], 'inventoryItem' => ['id' => $line['inventoryItemId']]];
+        }
+        $this->transfers[$name] = [
+            'id' => $id, 'name' => $name, 'status' => 'READY_TO_SHIP', 'referenceName' => $input['referenceName'] ?? null,
+            'origin' => ['name' => 'o', 'location' => ['id' => $input['originLocationId']]],
+            'destination' => ['name' => 'd', 'location' => ['id' => $input['destinationLocationId']]],
+            'lineItems' => ['nodes' => $lines], 'shipments' => ['nodes' => []],
+        ];
+
+        return [['inventoryTransfer' => ['id' => $id, 'name' => $name, 'status' => 'READY_TO_SHIP'], 'userErrors' => []], true];
+    }
+
+    /**
+     * A shipment in transit: the units leave the origin (committed) and are
+     * incoming at the destination.
+     */
+    private function shipTransferQ(array $input): array
+    {
+        foreach ($this->transfers as $name => $transfer) {
+            if ($transfer['id'] !== $input['movementId']) {
+                continue;
+            }
+            $origin = $transfer['origin']['location']['id'];
+            $destination = $transfer['destination']['location']['id'];
+            $shipmentId = 'gid://shopify/InventoryShipment/'.(count($this->applied) + 1);
+            $nodes = [];
+            foreach ($input['lineItems'] as $i => $line) {
+                $item = $line['inventoryItemId'];
+                $this->inv[$item][$origin]['committed'] -= (int) $line['quantity'];
+                $this->inv[$item][$destination] ??= array_fill_keys(['available', 'committed', 'reserved', 'damaged', 'quality_control', 'safety_stock', 'incoming'], 0);
+                $this->inv[$item][$destination]['incoming'] += (int) $line['quantity'];
+                $nodes[] = ['id' => $shipmentId.'/line/'.$i, 'quantity' => (int) $line['quantity'], 'unreceivedQuantity' => (int) $line['quantity'], 'inventoryItem' => ['id' => $item]];
+            }
+            $shipment = ['id' => $shipmentId, 'name' => $name.'-S1', 'status' => 'IN_TRANSIT', 'tracking' => $input['trackingInput'] ?? null, 'lineItems' => ['nodes' => $nodes]];
+            $this->transfers[$name]['status'] = 'IN_PROGRESS';
+            $this->transfers[$name]['shipments']['nodes'][] = $shipment;
+
+            return [['inventoryShipment' => $shipment, 'userErrors' => []], true];
+        }
+
+        return [['inventoryShipment' => null, 'userErrors' => [['field' => ['input', 'movementId'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]], false];
+    }
+
+    private function cancelTransferQ(string $id): array
+    {
+        foreach ($this->transfers as $name => $transfer) {
+            if ($transfer['id'] !== $id) {
+                continue;
+            }
+            if ($transfer['status'] !== 'READY_TO_SHIP' && $transfer['status'] !== 'DRAFT') {
+                return ['inventoryTransfer' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Only a transfer not shipped can be cancelled', 'code' => 'INVALID']]];
+            }
+            foreach ($transfer['lineItems']['nodes'] as $line) {
+                $this->inv[$line['inventoryItem']['id']][$transfer['origin']['location']['id']]['committed'] -= $line['totalQuantity'];
+                $this->inv[$line['inventoryItem']['id']][$transfer['origin']['location']['id']]['available'] += $line['totalQuantity'];
+            }
+            $this->transfers[$name]['status'] = 'CANCELED';
+            $this->applied[] = ['query' => 'inventoryTransferCancel', 'variables' => ['id' => $id]];
+
+            return ['inventoryTransfer' => ['id' => $id, 'status' => 'CANCELED'], 'userErrors' => []];
+        }
+
+        return ['inventoryTransfer' => null, 'userErrors' => [['field' => ['id'], 'message' => 'Not found', 'code' => 'NOT_FOUND']]];
     }
 
     private function createFulfillmentQ(array $input): array

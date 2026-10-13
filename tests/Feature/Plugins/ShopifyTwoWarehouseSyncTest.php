@@ -341,49 +341,95 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
     // Transfers, consolidation, returns
     // ------------------------------------------------------------------
 
-    public function test_a_transfer_of_saxone_pairs_moves_them_in_shopify_and_keeps_owner_and_total(): void
+    public function test_a_transfer_of_saxone_pairs_follows_the_three_steps_in_shopify_and_keeps_owner_and_total(): void
     {
         $this->setUpAndActivate();
         $saxone = StockOwner::where('code', 'SAXONE')->sole();
         $stock = app(VariantStockService::class);
+        $transfers = app(VariantTransferService::class);
 
         $stock->changeOwner($this->size42, $this->warehouse('SAX')->id, null, $saxone->id, 3);
         $this->assertSame([], $this->applied, 'An owner change sends nothing to Shopify.');
 
-        $transfer = app(VariantTransferService::class)->transfer($this->org->id, $this->warehouse('SAX')->id, $this->warehouse('MC2')->id, [
+        // 1. Prepared: a Shopify transfer ready to ship, the pairs committed at Via Maragliano.
+        $transfer = $transfers->prepare($this->org->id, $this->warehouse('SAX')->id, $this->warehouse('MC2')->id, [
             ['product_variant_id' => $this->size42->id, 'owner_id' => $saxone->id, 'quantity' => 2],
         ], $this->admin);
-
-        $this->assertSame(1, $this->qty(self::I42, self::SAX, 'available'));
-        $this->assertSame(4, $this->qty(self::I42, self::MC2, 'available'));
-        $this->assertCount(1, $this->appliedTo('inventoryAdjustQuantities'), 'Both sides in one Shopify call.');
+        $this->assertCount(1, $this->appliedTo('inventoryTransferCreateAsReadyToShip'));
+        $this->assertSame([1, 2], [$this->qty(self::I42, self::SAX, 'available'), $this->qty(self::I42, self::SAX, 'committed')]);
         $this->assertSame(VariantStockTransfer::CHANNEL_SYNCED, $transfer->fresh()->channel_status);
-        $this->assertSame(5, $this->size42->fresh()->stock);
-        $this->assertSame(2, (int) VariantStockLevel::where('warehouse_id', $this->warehouse('MC2')->id)->where('stock_owner_id', $saxone->id)->sum('on_hand'));
+        $this->inventoryWebhook(self::I42, self::SAX, 'lvl-t1');
+
+        // 2. Shipped: they leave Via Maragliano and are incoming at MC2.
+        $transfers->ship($transfer, $this->admin, 'BRT', 'TRK1');
+        $this->assertCount(1, $this->appliedTo('inventoryShipmentCreateInTransit'));
+        $this->assertSame([1, 0, 1], [$this->qty(self::I42, self::SAX, 'available'), $this->qty(self::I42, self::SAX, 'committed'), $this->qty(self::I42, self::SAX, 'on_hand')]);
+        $this->assertSame(2, $this->qty(self::I42, self::MC2, 'incoming'));
+        $this->assertSame(['company' => 'BRT', 'trackingNumber' => 'TRK1'], $this->appliedTo('inventoryShipmentCreateInTransit')[0]['variables']['input']['trackingInput']);
+
+        // 3. Received: one accepted, one refused.
+        $line = $transfer->lines()->sole();
+        $transfers->receive($transfer, [$line->id => ['accepted' => 1, 'rejected' => 1]], $this->admin);
+        $received = $this->appliedTo('inventoryShipmentReceive');
+        $this->assertCount(1, $received);
+        $this->assertSame(['ACCEPTED', 'REJECTED'], array_column($received[0]['variables']['lineItems'], 'reason'));
+        $this->assertSame([3, 0], [$this->qty(self::I42, self::MC2, 'available'), $this->qty(self::I42, self::MC2, 'incoming')]);
+        $this->inventoryWebhook(self::I42, self::MC2, 'lvl-t3');
+
+        // Same figures in both systems, nothing sent back, nothing to check.
+        $this->assertSame([1, 3], [$this->local($this->size42, 'SAX')['available'], $this->local($this->size42, 'MC2')['available']]);
+        $this->assertSame(4, $this->size42->fresh()->stock);
+        $this->assertSame(1, (int) VariantStockLevel::where('warehouse_id', $this->warehouse('MC2')->id)->where('stock_owner_id', $saxone->id)->sum('on_hand'));
+        $this->assertSame(VariantStockTransfer::CHANNEL_SYNCED, $transfer->fresh()->channel_status);
+        $this->assertSame(0, ShopifyStockIssue::where('status', 'open')->count());
+        $this->assertSame(0, ShopifyStockOperation::where('status', '!=', ShopifyStockOperation::CONFIRMED)->count());
     }
 
-    public function test_a_transfer_shows_pending_until_shopify_confirms_and_retries_only_the_failed_step(): void
+    public function test_a_transfer_shows_pending_until_shopify_confirms_and_the_next_step_waits(): void
     {
         $this->setUpAndActivate();
         $this->failNext = 1;
+        $transfers = app(VariantTransferService::class);
 
-        $transfer = app(VariantTransferService::class)->transfer($this->org->id, $this->warehouse('SAX')->id, $this->warehouse('MC2')->id, [
+        $transfer = $transfers->prepare($this->org->id, $this->warehouse('SAX')->id, $this->warehouse('MC2')->id, [
             ['product_variant_id' => $this->size42->id, 'quantity' => 1],
         ], $this->admin);
+        // Shipped here at once: the shipment waits for the transfer to exist in Shopify.
+        $transfers->ship($transfer, $this->admin);
 
-        // Done here, not yet in Shopify: never shown as fully done.
-        $this->assertSame('completed', $transfer->fresh()->status);
+        $this->assertSame('in_transit', $transfer->fresh()->status);
         $this->assertSame(VariantStockTransfer::CHANNEL_PENDING, $transfer->fresh()->channel_status);
+        $this->assertSame([], $this->appliedTo('inventoryShipmentCreateInTransit'));
         $this->assertSame(3, $this->qty(self::I42, self::SAX, 'available'));
 
         ShopifyStockOperation::query()->update(['next_attempt_at' => null]);
         (new OutboxProcessor($this->connection->fresh()))->run();
 
         $this->assertSame(VariantStockTransfer::CHANNEL_SYNCED, $transfer->fresh()->channel_status);
-        $this->assertSame(2, $this->qty(self::I42, self::SAX, 'available'));
-        $this->assertSame(3, $this->qty(self::I42, self::MC2, 'available'));
-        // The local move was not repeated.
-        $this->assertSame(1, VariantStockOperation::where('type', VariantStockOperation::TYPE_TRANSFER)->count());
+        $this->assertCount(1, $this->appliedTo('inventoryTransferCreateAsReadyToShip'));
+        $this->assertCount(1, $this->appliedTo('inventoryShipmentCreateInTransit'));
+        $this->assertSame([2, 0], [$this->qty(self::I42, self::SAX, 'available'), $this->qty(self::I42, self::SAX, 'committed')]);
+        $this->assertSame(1, $this->qty(self::I42, self::MC2, 'incoming'));
+        // The local steps were not repeated.
+        $this->assertSame(1, VariantStockOperation::where('type', VariantStockOperation::TYPE_TRANSFER_PREPARE)->count());
+    }
+
+    public function test_a_prepared_transfer_cancelled_frees_the_pairs_in_shopify(): void
+    {
+        $this->setUpAndActivate();
+        $transfers = app(VariantTransferService::class);
+
+        $transfer = $transfers->prepare($this->org->id, $this->warehouse('SAX')->id, $this->warehouse('MC2')->id, [
+            ['product_variant_id' => $this->size42->id, 'quantity' => 2],
+        ], $this->admin);
+        $this->assertSame(1, $this->qty(self::I42, self::SAX, 'available'));
+
+        $transfers->cancel($transfer, $this->admin);
+
+        $this->assertCount(1, $this->appliedTo('inventoryTransferCancel'));
+        $this->assertSame([3, 0], [$this->qty(self::I42, self::SAX, 'available'), $this->qty(self::I42, self::SAX, 'committed')]);
+        $this->assertSame(3, $this->local($this->size42, 'SAX')['available']);
+        $this->assertSame(VariantStockTransfer::CHANNEL_SYNCED, $transfer->fresh()->channel_status);
     }
 
     public function test_an_order_split_across_sites_is_consolidated_at_mc2_and_ships_once(): void

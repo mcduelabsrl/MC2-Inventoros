@@ -50,6 +50,14 @@ class VariantStockOperation extends Model
 
     public const TYPE_TRANSFER = 'transfer';
 
+    public const TYPE_TRANSFER_PREPARE = 'transfer_prepare';
+
+    public const TYPE_TRANSFER_SHIP = 'transfer_ship';
+
+    public const TYPE_TRANSFER_RECEIVE = 'transfer_receive';
+
+    public const TYPE_TRANSFER_CANCEL = 'transfer_cancel';
+
     public const TYPE_RETURN_RECEIVED = 'return_received';
 
     public const TYPE_INSPECTION = 'inspection';

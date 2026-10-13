@@ -78,6 +78,18 @@ class OutboundPlanner
             return $this->planConsolidation($operation);
         }
 
+        // A transfer between warehouses is a Shopify transfer too, step by
+        // step: prepared (ready to ship), shipped (shipment in transit),
+        // received (accepted / rejected), or cancelled.
+        if (in_array($operation->type, [
+            VariantStockOperation::TYPE_TRANSFER_PREPARE,
+            VariantStockOperation::TYPE_TRANSFER_SHIP,
+            VariantStockOperation::TYPE_TRANSFER_RECEIVE,
+            VariantStockOperation::TYPE_TRANSFER_CANCEL,
+        ], true)) {
+            return $this->planTransferStep($operation);
+        }
+
         $pairs = $this->pairs($operation);
         if ($pairs === []) {
             return [];
@@ -309,6 +321,92 @@ class OutboundPlanner
     }
 
     /**
+     * @return list<ShopifyStockOperation>
+     */
+    private function planTransferStep(VariantStockOperation $operation): array
+    {
+        $transfer = VariantStockTransfer::with('lines')->find($operation->transfer_id);
+        if ($transfer === null) {
+            return [];
+        }
+
+        $from = $this->map->locationForWarehouse((int) $transfer->from_warehouse_id);
+        $to = $this->map->locationForWarehouse((int) $transfer->to_warehouse_id);
+        if ($from === null || $to === null) {
+            return [];
+        }
+
+        // Quantities per Shopify item for this step.
+        $items = [];
+        foreach ($transfer->lines as $line) {
+            $item = $this->map->itemForVariant((int) $line->product_variant_id);
+            if ($item === null) {
+                continue;
+            }
+            $items[$line->id] = ['inventory_item_id' => $item, 'line' => $line];
+        }
+        if ($items === []) {
+            return [];
+        }
+
+        $base = ['transfer_id' => $transfer->id, 'reference' => 'gid://inventoros/VariantStockTransfer/'.$transfer->id];
+        $effect = [];
+
+        switch ($operation->type) {
+            case VariantStockOperation::TYPE_TRANSFER_PREPARE:
+                $lines = [];
+                foreach ($items as $i) {
+                    $lines[] = ['inventory_item_id' => $i['inventory_item_id'], 'quantity' => (int) $i['line']->quantity];
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'committed', (int) $i['line']->quantity);
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'available', -(int) $i['line']->quantity);
+                }
+                $row = ['kind' => 'transfer_create', 'payload' => $base + ['origin' => $from, 'destination' => $to, 'name' => $transfer->reference, 'note' => $transfer->notes, 'lines' => $lines]];
+                break;
+
+            case VariantStockOperation::TYPE_TRANSFER_SHIP:
+                $lines = [];
+                foreach ($items as $i) {
+                    $qty = (int) $i['line']->quantity;
+                    $lines[] = ['inventory_item_id' => $i['inventory_item_id'], 'quantity' => $qty];
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'committed', -$qty);
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'on_hand', -$qty);
+                    self::addEffect($effect, $i['inventory_item_id'], $to, 'incoming', $qty);
+                }
+                $row = ['kind' => 'transfer_ship', 'payload' => $base + ['lines' => $lines, 'carrier' => $transfer->carrier, 'tracking_number' => $transfer->tracking_number]];
+                break;
+
+            case VariantStockOperation::TYPE_TRANSFER_RECEIVE:
+                $lines = [];
+                foreach ((array) ($operation->meta['lines'] ?? []) as $received) {
+                    $i = $items[$received['line_id']] ?? null;
+                    if ($i === null) {
+                        continue;
+                    }
+                    $accepted = (int) $received['accepted'];
+                    $rejected = (int) $received['rejected'];
+                    $lines[] = ['inventory_item_id' => $i['inventory_item_id'], 'accepted' => $accepted, 'rejected' => $rejected];
+                    self::addEffect($effect, $i['inventory_item_id'], $to, 'incoming', -($accepted + $rejected));
+                    self::addEffect($effect, $i['inventory_item_id'], $to, 'available', $accepted);
+                    self::addEffect($effect, $i['inventory_item_id'], $to, 'on_hand', $accepted);
+                }
+                if ($lines === []) {
+                    return [];
+                }
+                $row = ['kind' => 'transfer_receive', 'payload' => $base + ['lines' => $lines]];
+                break;
+
+            default: // cancel
+                foreach ($items as $i) {
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'committed', -(int) $i['line']->quantity);
+                    self::addEffect($effect, $i['inventory_item_id'], $from, 'available', (int) $i['line']->quantity);
+                }
+                $row = ['kind' => 'transfer_cancel', 'payload' => $base];
+        }
+
+        return $this->store($operation, [$row + ['effect' => $effect]], 'delta');
+    }
+
+    /**
      * @param  list<array{kind: string, payload: array<string, mixed>, effect: array<string, int>}>  $rows
      * @return list<ShopifyStockOperation>
      */
@@ -320,7 +418,12 @@ class OutboundPlanner
 
         return DB::transaction(function () use ($operation, $rows, $mode) {
             $stored = [];
-            $previous = null;
+            // The steps of one transfer go out in order: each waits for the
+            // one before it, also across operations.
+            $previous = $operation->transfer_id === null ? null : ShopifyStockOperation::query()
+                ->where('transfer_id', $operation->transfer_id)
+                ->whereNotIn('status', [ShopifyStockOperation::CANCELLED])
+                ->latest('id')->first();
 
             foreach (array_values($rows) as $i => $row) {
                 $row['payload']['reference'] ??= self::REFERENCE.$operation->id;

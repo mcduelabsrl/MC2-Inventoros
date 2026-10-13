@@ -6,6 +6,8 @@ namespace Inventoros\Plugins\Shopify\Stock;
 
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\VariantStockLevel;
+use App\Models\Inventory\VariantStockTransfer;
+use App\Models\Inventory\VariantStockTransferLine;
 use App\Models\Order\Order;
 use App\Models\Order\OrderItemAllocation;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
@@ -120,7 +122,7 @@ class ChannelMap
     /**
      * What Shopify should show for a variant in a warehouse, by Inventoros:
      * on_hand as is; committed = units committed to Shopify orders (Shopify
-     * commits those itself); reserved = units reserved here plus units
+     * commits those itself) and units prepared for a transfer; reserved = units reserved here plus units
      * committed to orders taken outside Shopify (sent as reserved);
      * damaged and quality_control as is; incoming as is.
      *
@@ -144,9 +146,18 @@ class ChannelMap
             $byChannel[$channel] = (int) $open;
         }
 
+        // Units prepared for a transfer and not yet gone: Shopify holds them
+        // as committed at the origin too.
+        $preparedForTransfers = (int) VariantStockTransferLine::query()
+            ->join('variant_stock_transfers', 'variant_stock_transfers.id', '=', 'variant_stock_transfer_lines.variant_stock_transfer_id')
+            ->where('variant_stock_transfers.status', VariantStockTransfer::READY)
+            ->where('variant_stock_transfers.from_warehouse_id', $warehouseId)
+            ->where('variant_stock_transfer_lines.product_variant_id', $variantId)
+            ->sum('variant_stock_transfer_lines.quantity');
+
         return [
             'on_hand' => (int) $levels->sum('on_hand'),
-            'committed' => $byChannel['shopify'],
+            'committed' => $byChannel['shopify'] + $preparedForTransfers,
             'reserved' => (int) $levels->sum('reserved') + $byChannel['other'],
             'damaged' => (int) $levels->sum('damaged'),
             'quality_control' => (int) $levels->sum('quality_control'),

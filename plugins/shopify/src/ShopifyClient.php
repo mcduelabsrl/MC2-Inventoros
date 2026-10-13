@@ -50,6 +50,7 @@ class ShopifyClient
         'read_inventory_transfers',
         'write_inventory_transfers',
         'read_inventory_shipments',
+        'write_inventory_shipments',
         'write_inventory_shipments_received_items',
     ];
 
@@ -862,6 +863,73 @@ class ShopifyClient
         );
 
         return array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($data['inventoryTransferEdit']['userErrors'] ?? []));
+    }
+
+    /**
+     * Create a transfer ready to ship: Shopify commits its units at the
+     * origin.
+     *
+     * @param  array<int, array{inventory_item_id: string, quantity: int}>  $lines
+     * @return array{id: string|null, name: string|null, errors: array<int, string>}
+     */
+    public function createTransferReadyToShip(string $originId, string $destinationId, array $lines, string $referenceName, ?string $note, string $idempotencyKey): array
+    {
+        $data = $this->graphql(
+            'mutation CreateTransfer($input: InventoryTransferCreateAsReadyToShipInput!, $key: String!) { inventoryTransferCreateAsReadyToShip(input: $input) @idempotent(key: $key) { inventoryTransfer { id name status } userErrors { field message code } } }',
+            ['input' => array_filter([
+                'originLocationId' => self::gid('Location', $originId),
+                'destinationLocationId' => self::gid('Location', $destinationId),
+                'referenceName' => $referenceName,
+                'note' => $note,
+                'lineItems' => array_map(fn ($l) => ['inventoryItemId' => self::gid('InventoryItem', $l['inventory_item_id']), 'quantity' => (int) $l['quantity']], array_values($lines)),
+            ], fn ($v) => $v !== null), 'key' => $idempotencyKey],
+        );
+        $payload = $data['inventoryTransferCreateAsReadyToShip'] ?? [];
+
+        return [
+            'id' => $payload['inventoryTransfer']['id'] ?? null,
+            'name' => $payload['inventoryTransfer']['name'] ?? null,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
+    }
+
+    /**
+     * Ship a transfer: a shipment in transit (the units leave the origin and
+     * are incoming at the destination).
+     *
+     * @param  array<int, array{inventory_item_id: string, quantity: int}>  $lines
+     * @param  array{company?: string|null, number?: string|null}  $tracking
+     * @return array{id: string|null, lines: array<string, string>, errors: array<int, string>} lines: inventory item gid => shipment line gid
+     */
+    public function createShipmentInTransit(string $transferId, array $lines, array $tracking, string $idempotencyKey): array
+    {
+        $tracking = array_filter(['company' => $tracking['company'] ?? null, 'trackingNumber' => $tracking['number'] ?? null], fn ($v) => $v !== null && $v !== '');
+        $input = [
+            'movementId' => $transferId,
+            'lineItems' => array_map(fn ($l) => ['inventoryItemId' => self::gid('InventoryItem', $l['inventory_item_id']), 'quantity' => (int) $l['quantity']], array_values($lines)),
+        ];
+        if ($tracking !== []) {
+            $input['trackingInput'] = $tracking;
+        }
+
+        $data = $this->graphql(
+            'mutation ShipTransfer($input: InventoryShipmentCreateInput!, $key: String!) { inventoryShipmentCreateInTransit(input: $input) @idempotent(key: $key) { inventoryShipment { id name status lineItems(first: 100) { nodes { id quantity inventoryItem { id } } } } userErrors { field message code } } }',
+            ['input' => $input, 'key' => $idempotencyKey],
+        );
+        $payload = $data['inventoryShipmentCreateInTransit'] ?? [];
+
+        $byItem = [];
+        foreach ((array) ($payload['inventoryShipment']['lineItems']['nodes'] ?? []) as $node) {
+            if (isset($node['inventoryItem']['id'], $node['id'])) {
+                $byItem[(string) $node['inventoryItem']['id']] = (string) $node['id'];
+            }
+        }
+
+        return [
+            'id' => $payload['inventoryShipment']['id'] ?? null,
+            'lines' => $byItem,
+            'errors' => array_map(fn ($e) => (string) ($e['message'] ?? 'Unknown error'), (array) ($payload['userErrors'] ?? [])),
+        ];
     }
 
     /**

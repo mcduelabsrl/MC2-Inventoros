@@ -19,10 +19,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class VariantStockTransferLine extends Model
 {
     protected $fillable = [
-        'variant_stock_transfer_id', 'product_variant_id', 'stock_owner_id', 'quantity', 'committed', 'order_item_id',
+        'variant_stock_transfer_id', 'product_variant_id', 'stock_owner_id', 'quantity', 'received_quantity',
+        'rejected_quantity', 'committed', 'order_item_id',
     ];
 
-    protected $casts = ['quantity' => 'integer', 'committed' => 'boolean'];
+    protected $casts = ['quantity' => 'integer', 'received_quantity' => 'integer', 'rejected_quantity' => 'integer', 'committed' => 'boolean'];
+
+    /** Units shipped and not yet received or refused. */
+    public function outstanding(): int
+    {
+        return max(0, (int) $this->quantity - (int) $this->received_quantity - (int) $this->rejected_quantity);
+    }
 
     /**
      * @return BelongsTo<ProductVariant, $this>

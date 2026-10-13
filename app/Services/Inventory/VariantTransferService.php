@@ -34,9 +34,12 @@ class VariantTransferService
     public function __construct(private readonly VariantStockService $stock) {}
 
     /**
+     * Step 1, prepared: the units are set aside at the origin (committed to
+     * the transfer, no longer for sale) and stay there until they leave.
+     *
      * @param  list<array{product_variant_id: int, owner_id?: int|null, quantity: int}>  $lines
      */
-    public function transfer(int $organizationId, int $fromWarehouseId, int $toWarehouseId, array $lines, ?User $user = null, ?string $notes = null): VariantStockTransfer
+    public function prepare(int $organizationId, int $fromWarehouseId, int $toWarehouseId, array $lines, ?User $user = null, ?string $notes = null): VariantStockTransfer
     {
         $this->assertWarehouses($organizationId, $fromWarehouseId, $toWarehouseId);
 
@@ -52,9 +55,8 @@ class VariantTransferService
                 'from_warehouse_id' => $fromWarehouseId,
                 'to_warehouse_id' => $toWarehouseId,
                 'user_id' => $user?->id ?? auth()->id(),
-                'status' => 'completed',
+                'status' => VariantStockTransfer::READY,
                 'notes' => $notes,
-                'completed_at' => now(),
             ]);
 
             $changes = [];
@@ -63,7 +65,7 @@ class VariantTransferService
                 if ((int) $variant->organization_id !== $organizationId) {
                     throw new VariantStockException('The variant belongs to another organization.');
                 }
-                $owner = isset($line['owner_id']) ? (int) $line['owner_id'] : null;
+                $owner = isset($line['owner_id']) && $line['owner_id'] !== '' ? (int) $line['owner_id'] : null;
                 $qty = (int) $line['quantity'];
 
                 VariantStockTransferLine::create([
@@ -73,21 +75,178 @@ class VariantTransferService
                     'quantity' => $qty,
                 ]);
 
-                $changes[] = ['variant' => $variant, 'warehouse_id' => $fromWarehouseId, 'owner_id' => $owner, 'deltas' => ['on_hand' => -$qty]];
-                $changes[] = ['variant' => $variant, 'warehouse_id' => $toWarehouseId, 'owner_id' => $owner, 'deltas' => ['on_hand' => $qty]];
+                $changes[] = ['variant' => $variant, 'warehouse_id' => $fromWarehouseId, 'owner_id' => $owner, 'deltas' => ['committed' => $qty]];
             }
 
-            // Free units only: available at the origin must cover the move.
-            $this->stock->apply($organizationId, VariantStockOperation::TYPE_TRANSFER, $changes, [
+            // Free units only: available at the origin must cover them.
+            $this->stock->apply($organizationId, VariantStockOperation::TYPE_TRANSFER_PREPARE, $changes, [
                 'transfer_id' => $transfer->id,
                 'user_id' => $user?->id ?? auth()->id(),
-                'reason' => "Transfer {$transfer->reference}",
+                'reason' => "Transfer {$transfer->reference} prepared",
                 'notes' => $notes,
                 'legacy_ledger' => false,
-                'idempotency_key' => "transfer:{$transfer->id}",
+                'idempotency_key' => "transfer:{$transfer->id}:prepare",
             ]);
 
             return $transfer->load('lines');
+        });
+    }
+
+    /**
+     * Step 2, shipped: the units leave the origin and are incoming at the
+     * destination, with the same owner.
+     */
+    public function ship(VariantStockTransfer $transfer, ?User $user = null, ?string $carrier = null, ?string $trackingNumber = null): VariantStockTransfer
+    {
+        return DB::transaction(function () use ($transfer, $user, $carrier, $trackingNumber) {
+            $locked = VariantStockTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== VariantStockTransfer::READY) {
+                throw new VariantStockException("Transfer {$locked->reference} is not waiting to leave.");
+            }
+
+            $changes = [];
+            foreach ($locked->lines as $line) {
+                $changes[] = ['variant' => (int) $line->product_variant_id, 'warehouse_id' => (int) $locked->from_warehouse_id,
+                    'owner_id' => $line->stock_owner_id, 'deltas' => ['on_hand' => -$line->quantity, 'committed' => -$line->quantity]];
+                $changes[] = ['variant' => (int) $line->product_variant_id, 'warehouse_id' => (int) $locked->to_warehouse_id,
+                    'owner_id' => $line->stock_owner_id, 'deltas' => ['incoming' => $line->quantity]];
+            }
+
+            $locked->forceFill([
+                'status' => VariantStockTransfer::IN_TRANSIT,
+                'shipped_at' => now(),
+                'shipped_by' => $user?->id ?? auth()->id(),
+                'carrier' => $carrier,
+                'tracking_number' => $trackingNumber,
+            ])->save();
+
+            $this->stock->apply((int) $locked->organization_id, VariantStockOperation::TYPE_TRANSFER_SHIP, $changes, [
+                'transfer_id' => $locked->id,
+                'user_id' => $user?->id ?? auth()->id(),
+                'reason' => "Transfer {$locked->reference} shipped",
+                'legacy_ledger' => false,
+                'allow_negative' => true,
+                'idempotency_key' => "transfer:{$locked->id}:ship",
+            ]);
+
+            return $locked->load('lines');
+        });
+    }
+
+    /**
+     * Step 3, received: per line, units accepted (they enter the
+     * destination's stock) and refused (missing or unusable: they never
+     * enter). Partial receipts are allowed; the transfer completes when
+     * nothing is outstanding.
+     *
+     * @param  array<int, array{accepted?: int, rejected?: int}>  $receipt  line id => quantities; omitted lines are received in full
+     */
+    public function receive(VariantStockTransfer $transfer, array $receipt = [], ?User $user = null): VariantStockTransfer
+    {
+        return DB::transaction(function () use ($transfer, $receipt, $user) {
+            $locked = VariantStockTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== VariantStockTransfer::IN_TRANSIT) {
+                throw new VariantStockException("Transfer {$locked->reference} is not in transit.");
+            }
+
+            $changes = [];
+            $received = [];
+            foreach ($locked->lines as $line) {
+                $outstanding = $line->outstanding();
+                $accepted = (int) ($receipt === [] ? $outstanding : ($receipt[$line->id]['accepted'] ?? 0));
+                $rejected = (int) ($receipt[$line->id]['rejected'] ?? 0);
+
+                if ($accepted < 0 || $rejected < 0 || $accepted + $rejected > $outstanding) {
+                    throw new VariantStockException("Line {$line->variant?->sku}: only {$outstanding} units are still to receive.");
+                }
+                if ($accepted + $rejected === 0) {
+                    continue;
+                }
+
+                $line->received_quantity += $accepted;
+                $line->rejected_quantity += $rejected;
+                $line->save();
+                $received[] = ['line_id' => $line->id, 'product_variant_id' => (int) $line->product_variant_id, 'accepted' => $accepted, 'rejected' => $rejected];
+
+                $changes[] = ['variant' => (int) $line->product_variant_id, 'warehouse_id' => (int) $locked->to_warehouse_id,
+                    'owner_id' => $line->stock_owner_id, 'deltas' => ['incoming' => -($accepted + $rejected), 'on_hand' => $accepted]];
+            }
+
+            if ($changes === []) {
+                throw new VariantStockException('Enter at least one unit received or refused.');
+            }
+
+            $done = $locked->lines->every(fn ($l) => $l->outstanding() === 0);
+            $locked->forceFill([
+                'status' => $done ? VariantStockTransfer::COMPLETED : VariantStockTransfer::IN_TRANSIT,
+                'received_at' => now(),
+                'received_by' => $user?->id ?? auth()->id(),
+                'completed_at' => $done ? now() : null,
+            ])->save();
+
+            $receipts = VariantStockOperation::where('transfer_id', $locked->id)
+                ->where('type', VariantStockOperation::TYPE_TRANSFER_RECEIVE)->count();
+
+            $this->stock->apply((int) $locked->organization_id, VariantStockOperation::TYPE_TRANSFER_RECEIVE, $changes, [
+                'transfer_id' => $locked->id,
+                'user_id' => $user?->id ?? auth()->id(),
+                'reason' => "Transfer {$locked->reference} received",
+                // Received units count as a change of the variant's stock.
+                'legacy_type' => 'transfer',
+                'legacy_reference' => $locked,
+                'allow_negative' => true,
+                'idempotency_key' => "transfer:{$locked->id}:receive:".($receipts + 1),
+                'meta' => ['lines' => $received],
+            ]);
+
+            return $locked->load('lines');
+        });
+    }
+
+    /**
+     * Call off a transfer that has not left: the units set aside are free
+     * again at the origin.
+     */
+    public function cancel(VariantStockTransfer $transfer, ?User $user = null): VariantStockTransfer
+    {
+        return DB::transaction(function () use ($transfer, $user) {
+            $locked = VariantStockTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== VariantStockTransfer::READY) {
+                throw new VariantStockException("Transfer {$locked->reference} has already left and cannot be cancelled.");
+            }
+
+            $changes = $locked->lines->map(fn ($line) => ['variant' => (int) $line->product_variant_id, 'warehouse_id' => (int) $locked->from_warehouse_id,
+                'owner_id' => $line->stock_owner_id, 'deltas' => ['committed' => -$line->quantity]])->all();
+
+            $locked->forceFill(['status' => VariantStockTransfer::CANCELLED, 'cancelled_at' => now()])->save();
+
+            $this->stock->apply((int) $locked->organization_id, VariantStockOperation::TYPE_TRANSFER_CANCEL, $changes, [
+                'transfer_id' => $locked->id,
+                'user_id' => $user?->id ?? auth()->id(),
+                'reason' => "Transfer {$locked->reference} cancelled",
+                'legacy_ledger' => false,
+                'allow_negative' => true,
+                'idempotency_key' => "transfer:{$locked->id}:cancel",
+            ]);
+
+            return $locked->load('lines');
+        });
+    }
+
+    /**
+     * All three steps at once, for units that have already physically moved
+     * (e.g. a transfer received at the wrong site). Each step is still sent
+     * to the sales channel as its own step.
+     *
+     * @param  list<array{product_variant_id: int, owner_id?: int|null, quantity: int}>  $lines
+     */
+    public function transfer(int $organizationId, int $fromWarehouseId, int $toWarehouseId, array $lines, ?User $user = null, ?string $notes = null): VariantStockTransfer
+    {
+        return DB::transaction(function () use ($organizationId, $fromWarehouseId, $toWarehouseId, $lines, $user, $notes) {
+            $transfer = $this->prepare($organizationId, $fromWarehouseId, $toWarehouseId, $lines, $user, $notes);
+            $this->ship($transfer, $user);
+
+            return $this->receive($transfer, [], $user);
         });
     }
 

@@ -226,6 +226,7 @@ class OutboxProcessor
             'transfer_edit' => $this->editTransfer($operation),
             'shipment_receive' => $this->receiveShipment($operation),
             'fulfillment_create' => $this->createFulfillment($operation),
+            'transfer_create', 'transfer_ship', 'transfer_receive', 'transfer_cancel' => $this->transferStep($operation),
             default => ['group_id' => null, 'changes' => [], 'errors' => [['code' => null, 'message' => "Unknown operation {$operation->kind}", 'field' => null]]],
         };
     }
@@ -577,5 +578,90 @@ class OutboxProcessor
             ->where('organization_id', $this->connection->organization_id)->where('sku', $sku)->first();
 
         return $row !== null && $row->tracked ? ShopifyClient::gid('InventoryItem', $row->inventory_item_id) : null;
+    }
+
+    /**
+     * One step of a transfer, as a Shopify transfer: created ready to ship,
+     * shipped (shipment in transit), received (accepted / rejected) or
+     * cancelled. Each later step uses the Shopify ids the earlier one got;
+     * create, ship and receive carry the operation's idempotency key.
+     *
+     * @return array{group_id: string|null, changes: array<int, array<string, mixed>>, errors: array<int, array{code: string|null, message: string, field: mixed}>}
+     */
+    private function transferStep(ShopifyStockOperation $operation): array
+    {
+        $payload = $operation->payload;
+        $fail = fn (array $messages) => ['group_id' => null, 'changes' => [], 'errors' => array_map(fn ($m) => ['code' => 'TRANSFER', 'message' => $m, 'field' => null], $messages)];
+        $earlier = fn (string $kind) => ShopifyStockOperation::query()->where('transfer_id', $operation->transfer_id)
+            ->where('kind', $kind)->where('status', ShopifyStockOperation::CONFIRMED)->latest('id')->first();
+
+        switch ($operation->kind) {
+            case 'transfer_create':
+                $result = $this->client->createTransferReadyToShip($payload['origin'], $payload['destination'], $payload['lines'],
+                    (string) $payload['name'], $payload['note'] ?? null, $operation->idempotency_key);
+                if ($result['errors'] !== [] || $result['id'] === null) {
+                    return $fail($result['errors'] ?: ['Shopify did not create the transfer.']);
+                }
+                $payload['shopify_transfer_id'] = $result['id'];
+                $payload['shopify_transfer_name'] = $result['name'];
+                break;
+
+            case 'transfer_ship':
+                $transferId = $earlier('transfer_create')?->payload['shopify_transfer_id'] ?? null;
+                if ($transferId === null) {
+                    return $fail(['The transfer was not created in Shopify yet.']);
+                }
+                $result = $this->client->createShipmentInTransit($transferId, $payload['lines'],
+                    ['company' => $payload['carrier'] ?? null, 'number' => $payload['tracking_number'] ?? null], $operation->idempotency_key);
+                if ($result['errors'] !== [] || $result['id'] === null) {
+                    return $fail($result['errors'] ?: ['Shopify did not create the shipment.']);
+                }
+                $payload['shopify_shipment_id'] = $result['id'];
+                $payload['shopify_shipment_lines'] = $result['lines'];
+                break;
+
+            case 'transfer_receive':
+                $ship = $earlier('transfer_ship');
+                $shipmentId = $ship?->payload['shopify_shipment_id'] ?? null;
+                $lineIds = (array) ($ship?->payload['shopify_shipment_lines'] ?? []);
+                if ($shipmentId === null) {
+                    return $fail(['The transfer has not left in Shopify yet.']);
+                }
+                $lines = [];
+                foreach ($payload['lines'] as $line) {
+                    $id = $lineIds[ShopifyClient::gid('InventoryItem', $line['inventory_item_id'])] ?? null;
+                    if ($id === null) {
+                        return $fail(['A received item is not on the Shopify shipment.']);
+                    }
+                    if ($line['accepted'] > 0) {
+                        $lines[] = ['id' => $id, 'quantity' => (int) $line['accepted'], 'reason' => 'ACCEPTED'];
+                    }
+                    if ($line['rejected'] > 0) {
+                        $lines[] = ['id' => $id, 'quantity' => (int) $line['rejected'], 'reason' => 'REJECTED'];
+                    }
+                }
+                $errors = $this->client->receiveShipment($shipmentId, $lines, $operation->idempotency_key);
+                if ($errors !== []) {
+                    return $fail($errors);
+                }
+                break;
+
+            case 'transfer_cancel':
+                // No idempotency key on cancel: a retry after a lost answer
+                // finds the transfer already cancelled, which is success.
+                $created = $earlier('transfer_create')?->payload ?? [];
+                if (isset($created['shopify_transfer_id'])) {
+                    $errors = $this->client->cancelTransfer($created['shopify_transfer_id']);
+                    $current = $errors === [] ? null : $this->client->inventoryTransfer((string) ($created['shopify_transfer_name'] ?? ''));
+                    if ($errors !== [] && ($current['status'] ?? null) !== 'CANCELED') {
+                        return $fail($errors);
+                    }
+                }
+                break;
+        }
+
+        $operation->forceFill(['payload' => $payload])->save();
+
+        return ['group_id' => null, 'changes' => [], 'errors' => []];
     }
 }

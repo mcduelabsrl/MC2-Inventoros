@@ -31,7 +31,7 @@ Shopify no longer lets you create custom apps in the store admin. Create one in 
 2. Under **Versions**, create a version and paste this list into its **Scopes** field, exactly as written (comma-separated, no spaces):
 
    ```text
-   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_inventory_transfers,write_inventory_transfers,read_inventory_shipments,write_inventory_shipments_received_items
+   read_orders,read_products,read_inventory,write_inventory,read_locations,write_products,read_markets_home,read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_inventory_transfers,write_inventory_transfers,read_inventory_shipments,write_inventory_shipments,write_inventory_shipments_received_items
    ```
 
    - **Required:** the first five, for orders, stock and locations.
@@ -171,6 +171,7 @@ For a store with more than one location whose stock lives in Inventoros per vari
 - **Shopify to Inventoros.** `inventory_levels/update` webhooks (and a nightly read of every level) make Inventoros read the level again and compare what each side changed since they last agreed. A change made in Shopify is applied in Inventoros as an *external* operation, never sent back; the echo of our own change is recognised. A difference in committed units waits for the orders to be processed; if it persists it becomes an issue.
 - **Webhooks** are stored before processing (`shopify_webhook_events`), deduplicated on `X-Shopify-Webhook-Id`, checked for the shop domain, retried, and processed in any order (state is always re-read).
 - **Orders** commit their units where Shopify assigned them (its fulfilment orders) and stay aligned when Shopify moves them. An order split across locations is consolidated in the main warehouse before its single shipment: the units leave the origin, the fulfilment order is moved, the units arrive, in an order that never shows a pair for sale twice.
+- **Transfers** between warehouses are Shopify transfers, one step per confirmation in Inventoros: *prepared* creates the transfer ready to ship (the units are committed at the origin), *shipped* creates the shipment in transit with carrier and tracking (they leave the origin and are incoming at the destination), *received* receives the shipment lines as accepted or rejected (partial receipts allowed). A prepared transfer can be cancelled. Each step waits for the one before it in the outbox. Needs the `read_inventory_transfers`, `write_inventory_transfers`, `read_inventory_shipments`, `write_inventory_shipments` and `write_inventory_shipments_received_items` scopes. The consolidation of an order stays immediate (the units stay committed to the order).
 - **Returns** restocked by a Shopify refund are corrected to *quality control* in the returns warehouse, with their owner; they go back on sale after inspection.
 - **Issues** (conflicts, failed operations, unexplained differences) are listed on the *Stock by warehouse* screen with their decisions: use Shopify's figures, send Inventoros's, re-align the order, retry.
 
