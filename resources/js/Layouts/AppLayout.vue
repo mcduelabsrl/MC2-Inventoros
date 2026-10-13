@@ -221,7 +221,7 @@ const isActive = (item) => item.active.some((pattern) => route().current(pattern
         <!-- Mobile top bar -->
         <div class="md:hidden fixed top-0 inset-x-0 z-40 h-12 flex items-center justify-between px-4 bg-surface-base border-b border-border-subtle">
             <Link :href="route('dashboard')" class="flex items-center gap-2">
-                <img src="/images/brand/inventoros_icon_transparent_512.png" alt="Inventoros" class="h-7 w-7 shrink-0" />
+                <img src="/images/brand/saxone_mark.png" alt="Saxone" class="h-7 w-7 shrink-0 dark:rounded dark:bg-white dark:p-px" />
                 <span class="text-sm font-semibold tracking-tight">{{ workspaceName }}</span>
             </Link>
             <button
@@ -258,7 +258,7 @@ const isActive = (item) => item.active.some((pattern) => route().current(pattern
                     :href="route('dashboard')"
                     class="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-md hover:bg-surface-overlay transition-colors ds-focus-ring"
                 >
-                    <img src="/images/brand/inventoros_icon_transparent_512.png" alt="Inventoros" class="h-7 w-7 shrink-0" />
+                    <img src="/images/brand/saxone_mark.png" alt="Saxone" class="h-7 w-7 shrink-0 dark:rounded dark:bg-white dark:p-px" />
                     <span class="text-sm font-semibold tracking-tight truncate flex-1 text-left">
                         {{ workspaceName }}
                     </span>

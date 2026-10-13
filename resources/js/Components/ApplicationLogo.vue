@@ -1,3 +1,3 @@
 <template>
-    <img src="/images/brand/inventoros_icon_transparent_512.png" alt="Inventoros" />
+    <img src="/images/brand/saxone_logo.png" alt="Saxone" class="object-contain dark:rounded-lg dark:bg-white dark:p-1" />
 </template>
