@@ -494,7 +494,7 @@ final class ShopifyPluginTest extends TestCase
         $response->assertSessionHas('success');
 
         $created = $this->callsTo('webhookSubscriptionCreate');
-        $this->assertSame(['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED'], array_map(fn ($c) => $c['variables']['topic'], $created));
+        $this->assertSame(['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED', 'INVENTORY_LEVELS_UPDATE'], array_map(fn ($c) => $c['variables']['topic'], $created));
         $this->assertSame('https://inventory.example.com/webhooks/plugins/shopify/'.$connection->webhook_token, $created[0]['variables']['uri']);
         $this->assertNotNull($connection->fresh()->webhooks_registered_at);
     }

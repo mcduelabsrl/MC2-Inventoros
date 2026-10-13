@@ -47,7 +47,7 @@ class PushInventory implements ShouldBeUniqueUntilProcessing, ShouldQueue
     public function handle(): void
     {
         $connection = ShopifyConnection::forOrganization($this->organizationId);
-        if ($connection === null || ! $connection->canPushInventory()) {
+        if ($connection === null || ! $connection->legacyPushAllowed()) {
             return;
         }
 

@@ -116,6 +116,7 @@ final class ShipmentService
                 'created_by' => $user?->id,
                 'carrier' => $carrierKey,
                 'carrier_name' => $carrierName,
+                'reported_by_channel' => $this->clean($data['reported_by_channel'] ?? null),
                 'service' => $this->clean($data['service'] ?? null),
                 'tracking_number' => $trackingNumber,
                 'tracking_url' => $this->clean($data['tracking_url'] ?? null) ?? TrackingUrls::guess($carrierName, $trackingNumber),
@@ -466,6 +467,12 @@ final class ShipmentService
     private function fulfilVariantLines(Shipment $shipment, Order $order): void
     {
         if (! VariantWarehouseStockSettings::enabledFor((int) $order->organization_id)) {
+            return;
+        }
+
+        // A shipment a channel made before Inventoros took its stock from
+        // it is already out of the opening balances.
+        if ($shipment->reported_by_channel !== null && str_ends_with($shipment->reported_by_channel, '-history')) {
             return;
         }
 

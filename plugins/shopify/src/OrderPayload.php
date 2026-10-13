@@ -82,6 +82,7 @@ final class OrderPayload
                     'line_item_id' => ShopifyClient::legacyId($item['lineItem']['id'] ?? ''),
                     'quantity' => (int) ($item['quantity'] ?? 0),
                     'restock_type' => strtolower((string) ($item['restockType'] ?? 'no_restock')),
+                    'location_id' => isset($item['location']['id']) ? ShopifyClient::legacyId($item['location']['id']) : null,
                     'line_item' => ['sku' => $item['lineItem']['sku'] ?? null],
                 ], self::nodes($refund['refundLineItems'] ?? null)),
             ], (array) ($node['refunds'] ?? [])),

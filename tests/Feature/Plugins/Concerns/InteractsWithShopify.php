@@ -42,6 +42,14 @@ trait InteractsWithShopify
 
     private bool $shopifyFaked = false;
 
+    /**
+     * Extra GraphQL handler tried before the built-in answers: returns a
+     * full response body (['data' => ...] or ['errors' => ...]) or null.
+     *
+     * @var (\Closure(string, array<string, mixed>): ?array<string, mixed>)|null
+     */
+    protected ?\Closure $shopifyExtra = null;
+
     protected function setUpShopify(): void
     {
         $this->markInstalled();
@@ -108,11 +116,13 @@ trait InteractsWithShopify
     /**
      * @param  array<string, mixed>  $payload
      */
-    protected function postWebhook(string $topic, array $payload, string $token): TestResponse
+    protected function postWebhook(string $topic, array $payload, string $token, ?string $webhookId = null): TestResponse
     {
         $body = json_encode($payload);
 
-        return $this->call('POST', route('plg.shopify.webhooks.receive', ['token' => $token]), [], [], [], [
+        return $this->call('POST', route('plg.shopify.webhooks.receive', ['token' => $token]), [], [], [], array_filter([
+            'HTTP_X_SHOPIFY_WEBHOOK_ID' => $webhookId,
+        ]) + [
             'HTTP_X_SHOPIFY_TOPIC' => $topic,
             'HTTP_X_SHOPIFY_HMAC_SHA256' => base64_encode(hash_hmac('sha256', $body, self::SECRET, true)),
             'CONTENT_TYPE' => 'application/json',
@@ -224,6 +234,10 @@ trait InteractsWithShopify
                 $this->shopify['deny_once'] = false;
 
                 return Http::response(['errors' => [['message' => 'Access denied for locations field.', 'extensions' => ['code' => 'ACCESS_DENIED']]]]);
+            }
+
+            if ($this->shopifyExtra !== null && ($body = ($this->shopifyExtra)($query, $variables)) !== null) {
+                return Http::response($body);
             }
 
             $failSet = str_contains($query, 'inventorySetQuantities') && $this->shopify['fail_next_set'];

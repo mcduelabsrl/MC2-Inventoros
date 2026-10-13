@@ -549,7 +549,7 @@ class VariantStockService
      * enough available (the channel has already sold it); the missing units
      * are recorded as a shortfall and show as negative available.
      *
-     * @param  array<int, int>|null  $plan  warehouse id => quantity
+     * @param  array<int, int>|null  $plan  warehouse id => quantity; when given, exactly these units are committed
      * @param  array<string, mixed>  $context
      * @return Collection<int, OrderItemAllocation>
      */
@@ -616,6 +616,11 @@ class VariantStockService
                     }
                     $remaining -= $wanted;
                 }
+
+                // A plan is the whole truth: units it does not place (e.g.
+                // already fulfilled before the order reached Inventoros)
+                // are not committed anywhere.
+                $remaining = 0;
             }
 
             foreach ($remaining > 0 ? $warehouses : [] as $warehouseId) {
@@ -734,6 +739,76 @@ class VariantStockService
 
             return $quantity - $left;
         });
+    }
+
+    /**
+     * Make an order's open commitments match where a sales channel has
+     * assigned its units (plan: variant id => warehouse id => units still
+     * to fulfil). Lines already matching are left alone; others are
+     * released and committed again where the plan says. Returns whether
+     * anything changed.
+     *
+     * @param  array<int, array<int, int>>  $planByVariant
+     * @param  array<string, mixed>  $context
+     */
+    public function realignOrder(Order $order, array $planByVariant, array $context = []): bool
+    {
+        $items = OrderItem::where('order_id', $order->id)->whereNotNull('product_variant_id')->orderBy('id')->get();
+        $changed = false;
+
+        DB::transaction(function () use ($items, $planByVariant, $context, &$changed) {
+            foreach ($items->groupBy('product_variant_id') as $variantId => $variantItems) {
+                $current = [];
+                foreach ($variantItems as $item) {
+                    foreach ($this->openByWarehouse($item) as $warehouseId => $qty) {
+                        $current[$warehouseId] = ($current[$warehouseId] ?? 0) + $qty;
+                    }
+                }
+
+                $desired = array_filter(array_map('intval', $planByVariant[(int) $variantId] ?? []));
+                ksort($current);
+                ksort($desired);
+
+                if ($current === $desired) {
+                    continue;
+                }
+
+                $changed = true;
+
+                foreach ($variantItems as $item) {
+                    $open = array_sum($this->openByWarehouse($item));
+                    if ($open > 0) {
+                        $this->releaseOrderItem($item, $open, $context);
+                    }
+                }
+
+                // Hand the planned units out over the lines, each up to what
+                // it still has to ship.
+                foreach ($variantItems as $item) {
+                    $fulfilled = (int) OrderItemAllocation::where('order_item_id', $item->id)->sum('fulfilled_quantity');
+                    $room = max(0, (int) $item->quantity - $fulfilled);
+                    $portion = [];
+                    foreach ($desired as $warehouseId => $qty) {
+                        if ($room <= 0) {
+                            break;
+                        }
+                        $take = min($qty, $room);
+                        if ($take > 0) {
+                            $portion[$warehouseId] = $take;
+                            $desired[$warehouseId] -= $take;
+                            $room -= $take;
+                        }
+                    }
+                    $desired = array_filter($desired);
+
+                    if ($portion !== []) {
+                        $this->commitOrderItem($item, array_sum($portion), $portion, true, $context);
+                    }
+                }
+            }
+        });
+
+        return $changed;
     }
 
     /**

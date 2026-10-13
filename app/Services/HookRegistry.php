@@ -521,6 +521,20 @@ final class HookRegistry
     {
         return [
             // ========================================
+            // STOCK BY WAREHOUSE FILTERS
+            // ========================================
+            'variant_stock_channel_status' => [
+                'description' => 'Sync status of variant stock with sales channels, shown on the stock-by-warehouse screen. Return $statuses with [variant_id][warehouse_id] => [channel, status (synced|pending|error|conflict|unmapped), detail, last_synced_at] for the given variants.',
+                'parameters' => ['$statuses', '$organization_id', '$variant_ids'],
+                'example' => "add_filter('variant_stock_channel_status', function (\$statuses, \$organizationId, \$variantIds) { return \$statuses; });",
+            ],
+            'variant_stock_channel_issues' => [
+                'description' => 'Open stock sync issues from sales channels, listed on the stock-by-warehouse screen as anomalies: list of [id, channel, kind, message, product_variant_id, warehouse_id, created_at, actions]. $variant_id narrows to one variant (null for all).',
+                'parameters' => ['$issues', '$organization_id', '$variant_id'],
+                'example' => "add_filter('variant_stock_channel_issues', function (\$issues, \$organizationId, \$variantId) { return \$issues; });",
+            ],
+
+            // ========================================
             // PRODUCT FILTERS
             // ========================================
             'product_display_name' => [

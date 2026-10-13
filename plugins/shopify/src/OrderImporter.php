@@ -12,6 +12,7 @@ use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvalidOrderItemException;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
+use App\Models\Inventory\VariantStockOperation;
 use App\Models\Order\Order;
 use App\Models\Scopes\OrganizationScope;
 use App\Models\Shipping\Shipment;
@@ -20,8 +21,10 @@ use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\Organizations\ActiveOrganization;
 use App\Services\ReturnOrderService;
+use App\Services\Inventory\VariantStockService;
 use App\Services\Shipping\ShipmentService;
 use App\Support\Money;
+use App\Support\VariantWarehouseStockSettings;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -34,6 +37,7 @@ use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\Models\ShopifyLink;
 use Inventoros\Plugins\Shopify\Models\ShopifyOrder;
+use Inventoros\Plugins\Shopify\Stock\ChannelMap;
 
 /**
  * Keeps an Inventoros order in step with its Shopify order.
@@ -201,6 +205,7 @@ class OrderImporter
                 $order->refresh();
                 array_push($notes, ...$this->applyFulfillments($connection, $order, $payload, $member));
                 array_push($notes, ...$this->applyRefunds($connection, $order, $payload, $member));
+                $notes[] = $this->realignStock($connection, $order->refresh(), $payload);
                 array_push($notes, ...$this->applyPayments($connection, $order->refresh(), $payload, $member));
 
                 $notes = array_values(array_filter($notes));
@@ -261,7 +266,21 @@ class OrderImporter
                 // stock) is already counted in them: it is recorded as
                 // history, without taking stock or announcing a new sale.
                 $historical = $this->isHistory($connection, $payload['created_at'] ?? null);
-                $order = $this->orders->create($this->orderData($connection, $payload, $items, $unmatched), $member, 'shopify', adjustStock: ! $historical, announce: ! $historical);
+                $data = $this->orderData($connection, $payload, $items, $unmatched);
+
+                // Stock per warehouse: commit the units where Shopify
+                // assigned them (its fulfilment orders), even when the books
+                // show too few there: Shopify has sold them, so the shortfall
+                // is recorded and shown, not refused. Units still to ship of
+                // an order recorded as history are committed too.
+                if (VariantWarehouseStockSettings::enabledFor((int) $connection->organization_id)) {
+                    $plan = $this->allocationPlan($connection, (string) $payload['id']);
+                    $data['allow_stock_shortfall'] = true;
+                    $data['commit_variant_stock'] = true;
+                    $data['items'] = $this->spreadPlan($data['items'], $plan);
+                }
+
+                $order = $this->orders->create($data, $member, 'shopify', adjustStock: ! $historical, announce: ! $historical);
 
                 $notes = array_filter([
                     $historical ? 'Imported as history: placed before Inventoros took its stock from Shopify, so stock was not changed.' : null,
@@ -445,6 +464,10 @@ class OrderImporter
             'tracking_number' => $fulfillment['tracking_number'] ?? null,
             'tracking_url' => $fulfillment['tracking_url'] ?? null,
             'warehouse_id' => $connection->warehouseForLocation($fulfillment['location_id'] ?? null),
+            // Shopify already shipped it from that location: recorded as it
+            // happened (no consolidation check), and a fulfilment from
+            // before the stock was taken from Shopify moves no stock.
+            'reported_by_channel' => $this->beforeStockBaseline($connection, $fulfillment['created_at'] ?? null) ? 'shopify-history' : 'shopify',
             // Shopify already told the customer.
             'notify_customer' => false,
             'items' => $items,
@@ -480,7 +503,7 @@ class OrderImporter
                 continue;
             }
 
-            if ($this->isHistory($connection, $refund['created_at'] ?? null)) {
+            if ($this->isHistory($connection, $refund['created_at'] ?? null) || $this->beforeStockBaseline($connection, $refund['created_at'] ?? null)) {
                 // Its restock is already in the stock Inventoros took from Shopify.
                 ShopifyLink::query()->create($attributes + ['shopify_order_id' => (string) $payload['id'], 'state' => 'history']);
 
@@ -509,9 +532,14 @@ class OrderImporter
                     'notes' => 'Restocked by a refund in Shopify.',
                     'items' => array_map(fn (array $i) => $i + ['condition' => 'used', 'restock' => true], $items),
                 ]);
-                $this->returns->approve($return, $member);
-                $this->returns->receive($return, $member);
-                $this->returns->complete($return, $member);
+                // One transaction, so the stock change is announced (and sent
+                // on to Shopify) only once it knows where Shopify restocked.
+                DB::transaction(function () use ($return, $member, $connection, $returned, $lines) {
+                    $this->returns->approve($return, $member);
+                    $this->returns->receive($return, $member);
+                    $this->noteChannelRestock($connection, $return->fresh('items.orderItem'), $returned, $lines);
+                    $this->returns->complete($return, $member);
+                });
 
                 ShopifyLink::query()->create($attributes + ['shopify_order_id' => (string) $payload['id'], 'local_id' => $return->id, 'state' => 'received']);
             } catch (BusinessRuleException|AuthorizationException|\RuntimeException $e) {
@@ -864,6 +892,186 @@ class OrderImporter
         return $variantId === null ? "p{$productId}" : "v{$variantId}";
     }
 
+
+    // ------------------------------------------------------------------
+    // Stock per warehouse
+    // ------------------------------------------------------------------
+
+    /**
+     * Whether something at $time happened before Inventoros took its stock
+     * per warehouse from Shopify: its effect is already in the opening
+     * balances and must not move stock again.
+     */
+    private function beforeStockBaseline(ShopifyConnection $connection, mixed $time): bool
+    {
+        $at = self::time($time);
+
+        return $at !== null && $connection->stock_baseline_at !== null && $at->lt($connection->stock_baseline_at);
+    }
+
+    /** @var array<string, array<int, array<int, int>>|null> */
+    private array $plans = [];
+
+    /**
+     * Where Shopify has assigned the units of an order still to ship:
+     * variant id => warehouse id => units. Null when it cannot be read (no
+     * fulfilment order scopes): the units are then taken by priority.
+     *
+     * @return array<int, array<int, int>>|null
+     */
+    public function allocationPlan(ShopifyConnection $connection, string $shopifyOrderId): ?array
+    {
+        if (array_key_exists($shopifyOrderId, $this->plans)) {
+            return $this->plans[$shopifyOrderId];
+        }
+
+        try {
+            $fulfillmentOrders = (new ShopifyClient($connection))->fulfillmentOrders($shopifyOrderId);
+        } catch (ShopifyException $e) {
+            Log::info('Shopify: could not read the order\'s fulfilment orders', ['error' => $e->getMessage()]);
+
+            return $this->plans[$shopifyOrderId] = null;
+        }
+
+        $map = new ChannelMap($connection);
+        $plan = [];
+        foreach ($fulfillmentOrders as $fo) {
+            $warehouse = $fo['location_id'] !== null ? $connection->warehouseForLocation($fo['location_id']) : null;
+            if ($warehouse === null) {
+                continue;
+            }
+            foreach ($fo['lines'] as $line) {
+                if ($line['remaining'] <= 0 || $line['inventory_item_id'] === null) {
+                    continue;
+                }
+                $variant = $map->variantForItem($line['inventory_item_id']);
+                if ($variant === null) {
+                    continue;
+                }
+                $plan[$variant->id][$warehouse] = ($plan[$variant->id][$warehouse] ?? 0) + $line['remaining'];
+            }
+        }
+
+        return $this->plans[$shopifyOrderId] = $plan;
+    }
+
+    /**
+     * Hand a per-variant plan out over the order lines of each variant.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @param  array<int, array<int, int>>|null  $plan
+     * @return array<int, array<string, mixed>>
+     */
+    private function spreadPlan(array $items, ?array $plan): array
+    {
+        if ($plan === null) {
+            return $items;
+        }
+
+        foreach ($items as $i => $item) {
+            $variantId = $item['product_variant_id'] ?? null;
+            if ($variantId === null) {
+                continue;
+            }
+            $room = (int) $item['quantity'];
+            $portion = [];
+            foreach ($plan[$variantId] ?? [] as $warehouse => $qty) {
+                $take = min($qty, $room);
+                if ($take > 0) {
+                    $portion[$warehouse] = $take;
+                    $plan[$variantId][$warehouse] -= $take;
+                    $room -= $take;
+                }
+            }
+            $items[$i]['allocation_plan'] = $portion;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Keep an open order's commitments where Shopify has its units: after an
+     * edit, a fulfilment, a move of its fulfilment orders in Shopify, or a
+     * consolidation confirmed there. Shopify made these changes itself, so
+     * nothing is sent back.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function realignStock(ShopifyConnection $connection, Order $order, array $payload): ?string
+    {
+        if (! VariantWarehouseStockSettings::enabledFor((int) $connection->organization_id)
+            || in_array($order->status, [OrderStatus::CANCELLED, OrderStatus::SHIPPED, OrderStatus::DELIVERED], true)) {
+            return null;
+        }
+
+        $plan = $this->allocationPlan($connection, (string) $payload['id']);
+        if ($plan === null) {
+            return null;
+        }
+
+        try {
+            $changed = app(VariantStockService::class)->realignOrder($order, $plan, [
+                'source' => VariantStockOperation::SOURCE_EXTERNAL,
+                'user_id' => $connection->user_id,
+                'reason' => 'Shopify assignment of order '.($payload['name'] ?? $payload['id']),
+            ]);
+        } catch (BusinessRuleException $e) {
+            return 'Stock commitments were not re-aligned with Shopify: '.$e->getMessage();
+        }
+
+        return $changed ? 'Stock commitments follow the locations Shopify assigned.' : null;
+    }
+
+    /**
+     * Shopify put the refunded units back on sale where the refund
+     * restocked them; the return lands in quality control at the returns
+     * warehouse. Record where Shopify restocked, so only the difference is
+     * sent (see OutboundPlanner).
+     *
+     * @param  array<int, array<string, mixed>>  $refundLines
+     * @param  array<string, array{product_id: int, product_variant_id: int|null}>  $lines
+     */
+    private function noteChannelRestock(ShopifyConnection $connection, \App\Models\Order\ReturnOrder $return, array $refundLines, array $lines): void
+    {
+        if (! VariantWarehouseStockSettings::enabledFor((int) $connection->organization_id)) {
+            return;
+        }
+
+        $restocked = [];
+        foreach ($refundLines as $line) {
+            $target = $lines[(string) ($line['line_item_id'] ?? '')] ?? null;
+            $location = $line['location_id'] ?? null;
+            if ($target === null || ($target['product_variant_id'] ?? null) === null || $location === null) {
+                continue;
+            }
+            $restocked[] = [
+                'product_variant_id' => (int) $target['product_variant_id'],
+                'location_id' => ShopifyClient::gid('Location', (string) $location),
+                'quantity' => (int) ($line['quantity'] ?? 0),
+            ];
+        }
+
+        if ($restocked === []) {
+            return;
+        }
+
+        foreach ($return->items as $item) {
+            $operation = VariantStockOperation::query()
+                ->where('organization_id', $connection->organization_id)
+                ->where('idempotency_key', "return:{$return->id}:item:{$item->id}")
+                ->first();
+
+            if ($operation === null) {
+                continue;
+            }
+
+            $mine = array_values(array_filter($restocked, fn ($r) => $r['product_variant_id'] === (int) ($item->orderItem?->product_variant_id)));
+            $meta = (array) ($operation->meta ?? []);
+            $meta['channel_restocked'] = $mine;
+            $operation->forceFill(['meta' => $meta])->save();
+        }
+    }
+
     // ------------------------------------------------------------------
     // Order data
     // ------------------------------------------------------------------
@@ -920,6 +1128,12 @@ class OrderImporter
      */
     private function orderWarehouse(ShopifyConnection $connection, array $payload): ?int
     {
+        // Stock per warehouse: an order ships once, from the main warehouse,
+        // after its pairs are gathered there.
+        if (VariantWarehouseStockSettings::enabledFor((int) $connection->organization_id)) {
+            return app(VariantStockService::class)->defaultWarehouseId((int) $connection->organization_id) ?? $connection->warehouse_id;
+        }
+
         $map = $connection->locationMap();
         $mapped = array_values(array_filter($map, fn ($e) => $e['warehouse_id'] !== null));
 

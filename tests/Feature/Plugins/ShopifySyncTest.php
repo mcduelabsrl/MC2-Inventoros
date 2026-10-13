@@ -491,8 +491,8 @@ final class ShopifySyncTest extends TestCase
         RecoverOrders::dispatch($connection->organization_id);
 
         $created = array_map(fn ($c) => $c['variables']['topic'], $this->callsTo('webhookSubscriptionCreate'));
-        $this->assertSame(['ORDERS_UPDATED', 'ORDERS_CANCELLED'], $created);
-        $this->assertSame(['ORDERS_UPDATED', 'ORDERS_CANCELLED'], ShopifyConnection::forOrganization($this->org->id)->orders_sync_summary['webhooks_repaired']);
+        $this->assertSame(['ORDERS_UPDATED', 'ORDERS_CANCELLED', 'INVENTORY_LEVELS_UPDATE'], $created);
+        $this->assertSame(['ORDERS_UPDATED', 'ORDERS_CANCELLED', 'INVENTORY_LEVELS_UPDATE'], ShopifyConnection::forOrganization($this->org->id)->orders_sync_summary['webhooks_repaired']);
     }
 
     // ------------------------------------------------------------------
