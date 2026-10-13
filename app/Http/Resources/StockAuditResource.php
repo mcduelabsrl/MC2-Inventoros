@@ -28,6 +28,7 @@ class StockAuditResource extends JsonResource
             'status' => $this->status,
             'audit_type' => $this->audit_type,
             'warehouse_location_id' => $this->warehouse_location_id,
+            'warehouse_id' => $this->warehouse_id,
             'warehouse_location' => $this->whenLoaded('warehouseLocation', function () {
                 return [
                     'id' => $this->warehouseLocation->id,

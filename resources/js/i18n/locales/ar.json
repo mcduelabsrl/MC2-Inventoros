@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "معلق",
       "counted": "تم العد",
+      "recount": "Count again",
       "verified": "تم التحقق",
       "adjusted": "تم التعديل"
     },
@@ -64,7 +65,11 @@
         "spot": "فحص سريع لمنتجات محددة"
       },
       "location": "موقع المستودع",
-      "locationHint": "اتركه فارغاً لتضمين المنتجات من جميع المواقع"
+      "locationHint": "اتركه فارغاً لتضمين المنتجات من جميع المواقع",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "رقم الجرد",
@@ -95,6 +100,8 @@
       "inStock": "في المخزون",
       "fullAuditInfo": "سيتم تضمين جميع المنتجات النشطة تلقائياً في هذا الجرد. يمكنك مراجعة الأصناف بعد الإنشاء.",
       "fullAuditInfoAtLocation": "سيتم تضمين جميع المنتجات النشطة في الموقع المحدد تلقائياً في هذا الجرد. يمكنك مراجعة الأصناف بعد الإنشاء.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "إنشاء الجرد"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "(تم عدّ {counted} من أصل {total})",
       "count": "عدّ",
       "recount": "إعادة العد",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "ملاحظات (اختياري)",
       "noItems": "لا توجد أصناف في هذا الجرد",
       "processing": "جارٍ المعالجة...",

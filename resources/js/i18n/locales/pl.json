@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "Oczekujące",
       "counted": "Policzone",
+      "recount": "Count again",
       "verified": "Zweryfikowane",
       "adjusted": "Skorygowane"
     },
@@ -64,7 +65,11 @@
         "spot": "Szybka kontrola wybranych produktów"
       },
       "location": "Lokalizacja magazynowa",
-      "locationHint": "Pozostaw puste, aby uwzględnić produkty ze wszystkich lokalizacji"
+      "locationHint": "Pozostaw puste, aby uwzględnić produkty ze wszystkich lokalizacji",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "Nr inwentaryzacji",
@@ -95,6 +100,8 @@
       "inStock": "na stanie",
       "fullAuditInfo": "Wszystkie aktywne produkty zostaną automatycznie uwzględnione w tej inwentaryzacji. Pozycje możesz przejrzeć po jej utworzeniu.",
       "fullAuditInfoAtLocation": "Wszystkie aktywne produkty w wybranej lokalizacji zostaną automatycznie uwzględnione w tej inwentaryzacji. Pozycje możesz przejrzeć po jej utworzeniu.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "Utwórz inwentaryzację"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "(policzono {counted} z {total})",
       "count": "Policz",
       "recount": "Policz ponownie",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "Notatki (opcjonalnie)",
       "noItems": "Brak pozycji w tej inwentaryzacji",
       "processing": "Przetwarzanie...",

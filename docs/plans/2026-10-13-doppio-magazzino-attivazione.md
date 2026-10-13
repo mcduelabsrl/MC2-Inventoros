@@ -14,6 +14,12 @@ Le scritture verso Shopify partono solo con `shopify:stock-activate`, dopo che i
 - **Ordini.** Impegnano le paia nel magazzino indicato da Shopify per gli ordini Shopify. Per gli altri ordini l'ordine è MC2, poi Saxone.
   - Gli annullamenti liberano le paia; le spedizioni le scaricano.
   - Una spedizione parte solo quando tutte le paia sono riunite in MC2. Il consolidamento è un trasferimento collegato all'ordine e le paia restano impegnate per tutto il tempo.
+- **Conteggi inventariali per magazzino.** In *Inventari fisici*, alla creazione si sceglie *Cosa contare*: un magazzino (le varianti) oppure i prodotti per ubicazione (i prodotti senza varianti).
+  - Una riga per variante, con le paia fisiche di quel magazzino, tutti i proprietari insieme. Il lettore di codici a barre trova la riga della variante.
+  - La quantità di sistema di ogni riga viene fissata nel momento in cui la conti.
+  - Alla chiusura ogni riga diventa un conteggio assoluto, come il conteggio della schermata *Giacenze per magazzino*, e arriva a Shopify con lo stesso controllo (`changeFromQuantity`).
+  - Se la giacenza di una riga è cambiata dopo la conta (una vendita, una spedizione), la chiusura non registra niente e quelle righe passano a *Da ricontare*. Le ricontate vengono confrontate con la giacenza di quel momento.
+  - Paia in più: vanno in *proprietà da attribuire*. Paia in meno: si tolgono prima da *da attribuire*, poi dai proprietari con più paia libere.
 - **Resi.** Entrano fisicamente in MC2 nello stato *da controllare* e mantengono il proprietario originario. Tornano in vendita solo dopo il controllo.
 - **Trasferimenti in tre passaggi.** Il proprietario non cambia; il cambio di proprietà è un'operazione separata. Ogni passaggio è una conferma dell'operatore e crea il passaggio corrispondente su Shopify:
   1. *Preparato*: le paia vengono messe da parte nel magazzino di partenza e non sono più in vendita. Su Shopify nasce un trasferimento "pronto da spedire".
@@ -149,7 +155,7 @@ Tutti i comandi vanno lanciati sul server, in `~/www/saxone.eu/inventoros`, con 
 
 ## Limiti noti
 
-- **Prodotti semplici e conteggi.** I prodotti senza varianti restano sul sistema precedente (ubicazioni). I conteggi inventariali (`stock_audits`) non gestiscono ancora le varianti per magazzino: per le scarpe usa il conteggio dalla nuova schermata.
+- **Prodotti semplici.** I prodotti senza varianti restano sul sistema precedente (ubicazioni) e si contano con i conteggi per ubicazione.
 - **Stato "safety_stock" di Shopify.** Non viene importato come stato separato.
 - **Interfaccia.** La pagina impostazioni del plugin non mostra ancora lo stato dell'outbox. Stati e anomalie sono nella schermata *Giacenze per magazzino*.
 - **Mutazioni non provate sul negozio reale.** `inventoryTransferCreateAsReadyToShip`, `inventoryShipmentCreateInTransit`, `inventoryTransferCancel`, `inventoryTransferEdit`, `inventoryShipmentReceive` e `fulfillmentOrderMove` sono validate sullo schema e provate con un fake di Shopify, non sul negozio reale. Per questo #T0001 richiede l'approvazione esplicita, e il primo trasferimento va fatto su una variante di prova (passaggio 10).

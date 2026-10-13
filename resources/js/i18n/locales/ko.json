@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "대기 중",
       "counted": "집계됨",
+      "recount": "Count again",
       "verified": "확인됨",
       "adjusted": "조정됨"
     },
@@ -64,7 +65,11 @@
         "spot": "특정 제품을 빠르게 점검합니다"
       },
       "location": "창고 위치",
-      "locationHint": "모든 위치의 제품을 포함하려면 비워 두세요"
+      "locationHint": "모든 위치의 제품을 포함하려면 비워 두세요",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "실사 #",
@@ -95,6 +100,8 @@
       "inStock": "재고",
       "fullAuditInfo": "모든 활성 제품이 이 실사에 자동으로 포함됩니다. 생성 후 품목을 검토할 수 있습니다.",
       "fullAuditInfoAtLocation": "선택한 위치의 모든 활성 제품이 이 실사에 자동으로 포함됩니다. 생성 후 품목을 검토할 수 있습니다.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "실사 생성"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "({total}개 중 {counted}개 집계됨)",
       "count": "집계",
       "recount": "재집계",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "메모 (선택사항)",
       "noItems": "이 실사에 품목이 없습니다",
       "processing": "처리 중...",

@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "Pendiente",
       "counted": "Contado",
+      "recount": "Count again",
       "verified": "Verificado",
       "adjusted": "Ajustado"
     },
@@ -64,7 +65,11 @@
         "spot": "Verificación rápida de productos específicos"
       },
       "location": "Ubicación del almacén",
-      "locationHint": "Déjalo en blanco para incluir productos de todas las ubicaciones"
+      "locationHint": "Déjalo en blanco para incluir productos de todas las ubicaciones",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "Auditoría #",
@@ -95,6 +100,8 @@
       "inStock": "en stock",
       "fullAuditInfo": "Todos los productos activos se incluirán automáticamente en esta auditoría. Puedes revisar los artículos después de crearla.",
       "fullAuditInfoAtLocation": "Todos los productos activos de la ubicación seleccionada se incluirán automáticamente en esta auditoría. Puedes revisar los artículos después de crearla.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "Crear auditoría"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "({counted} de {total} contados)",
       "count": "Contar",
       "recount": "Volver a contar",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "Notas (opcional)",
       "noItems": "No hay artículos en esta auditoría",
       "processing": "Procesando...",

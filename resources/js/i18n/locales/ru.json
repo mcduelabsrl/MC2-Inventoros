@@ -50,6 +50,7 @@
     "itemStatuses": {
       "pending": "Ожидает",
       "counted": "Посчитано",
+      "recount": "Count again",
       "verified": "Проверено",
       "adjusted": "Скорректировано"
     },
@@ -64,7 +65,11 @@
         "spot": "Быстрая проверка отдельных товаров"
       },
       "location": "Место хранения",
-      "locationHint": "Оставьте пустым, чтобы включить товары из всех мест хранения"
+      "locationHint": "Оставьте пустым, чтобы включить товары из всех мест хранения",
+      "warehouse": "Count",
+      "byLocation": "Products by location",
+      "byLocationHint": "Products without variants, by location.",
+      "warehouseHint": "Every variant in this warehouse, all owners together. Each line is compared with the stock when it is counted."
     },
     "columns": {
       "auditNumber": "Инвентаризация №",
@@ -95,6 +100,8 @@
       "inStock": "в наличии",
       "fullAuditInfo": "Все активные товары будут автоматически включены в эту инвентаризацию. Позиции можно проверить после создания.",
       "fullAuditInfoAtLocation": "Все активные товары в выбранном месте хранения будут автоматически включены в эту инвентаризацию. Позиции можно проверить после создания.",
+      "selectProductsHintByWarehouse": "Choose the products whose variants to count in this warehouse.",
+      "fullAuditInfoByWarehouse": "Every variant of every active product with variants will be counted in this warehouse.",
       "submit": "Создать инвентаризацию"
     },
     "edit": {
@@ -114,6 +121,7 @@
       "countedProgress": "(посчитано {counted} из {total})",
       "count": "Посчитать",
       "recount": "Пересчитать",
+      "byWarehouseHint": "Counted by variant and warehouse. If a line’s stock changes after it is counted, it must be counted again before completing.",
       "countNotesPlaceholder": "Заметки (необязательно)",
       "noItems": "В этой инвентаризации нет позиций",
       "processing": "Обработка...",

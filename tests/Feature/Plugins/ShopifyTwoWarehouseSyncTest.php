@@ -19,6 +19,7 @@ use App\Services\Inventory\VariantStockService;
 use App\Services\Inventory\VariantTransferService;
 use App\Services\OrderService;
 use App\Services\Shipping\ShipmentService;
+use App\Services\StockAuditService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
@@ -321,6 +322,31 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->assertSame(1, $this->qty(self::I42, self::MC2, 'on_hand'));
         $this->assertSame(1, ShopifyStockIssue::where('kind', 'count_conflict')->count());
         $this->assertSame(ShopifyInventoryLevel::CONFLICT, ShopifyInventoryLevel::where('inventory_item_id', self::I42)->where('location_id', self::MC2)->value('sync_status'));
+    }
+
+    public function test_a_stock_audit_by_warehouse_is_sent_as_a_compare_and_set_count(): void
+    {
+        $this->setUpAndActivate();
+        $saxone = StockOwner::where('code', 'SAXONE')->sole();
+        app(VariantStockService::class)->changeOwner($this->size42, $this->warehouse('SAX')->id, null, $saxone->id, 2);
+        $audits = app(StockAuditService::class);
+
+        $audit = $audits->start($audits->create($this->org->id, $this->admin, [
+            'name' => 'Via Maragliano', 'audit_type' => 'spot', 'warehouse_id' => $this->warehouse('SAX')->id, 'product_ids' => [$this->size42->product_id],
+        ]), $this->admin);
+        $line = $audit->items()->where('product_variant_id', $this->size42->id)->sole();
+        $audits->recordCount($audit, $line, $this->admin, 2);
+        $audits->complete($audit, $this->admin, allowUncounted: true); // the 43 is not counted
+
+        // One set for the location, all owners together, from the agreed figure.
+        $sets = $this->appliedTo('inventorySetQuantities');
+        $this->assertCount(1, $sets);
+        $this->assertSame([2, 3], [$sets[0]['variables']['input']['quantities'][0]['quantity'], $sets[0]['variables']['input']['quantities'][0]['changeFromQuantity']]);
+        $this->assertSame(2, $this->qty(self::I42, self::SAX, 'on_hand'));
+        $this->assertSame(2, $this->local($this->size42, 'SAX')['on_hand']);
+        $this->assertSame(ShopifyStockOperation::CONFIRMED, ShopifyStockOperation::sole()->status);
+        // The missing pair came off "to be attributed": Saxone's 2 remain.
+        $this->assertSame(2, (int) VariantStockLevel::where('warehouse_id', $this->warehouse('SAX')->id)->where('stock_owner_id', $saxone->id)->sum('on_hand'));
     }
 
     public function test_a_movement_is_rebased_when_a_sale_happened_meanwhile(): void
