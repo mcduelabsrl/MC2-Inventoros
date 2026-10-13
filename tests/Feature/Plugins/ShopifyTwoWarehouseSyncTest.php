@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Plugins;
 
+use App\Mail\ShipmentShippedEmail;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\ProductVariant;
 use App\Models\Inventory\StockOwner;
@@ -19,6 +20,7 @@ use App\Services\Inventory\VariantTransferService;
 use App\Services\OrderService;
 use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Inventoros\Plugins\Shopify\Models\ShopifyConnection;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryItem;
 use Inventoros\Plugins\Shopify\Models\ShopifyInventoryLevel;
@@ -646,12 +648,18 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $line = ['id' => 61, 'sku' => 'SUN-43', 'title' => 'Sunday 43', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00'];
         $this->postWebhook('orders/create', $this->orderPayload([$line], ['id' => 6001, 'name' => '#6001', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-6001')->assertOk();
         $order = Order::where('external_id', '6001')->sole();
+        $order->forceFill(['customer_email' => 'cliente@example.com'])->save();
         $this->actingAs($this->admin);
+        Mail::fake();
 
         // Shopify fulfils, but the answer is lost.
         $this->loseNextAnswer = true;
         $shipments = app(ShipmentService::class);
-        $shipments->markShipped($shipments->create($order, ['tracking_number' => 'TRK6']));
+        $shipments->markShipped($shipments->create($order, ['tracking_number' => 'TRK6', 'notify_customer' => true]));
+
+        // One shipping mail, from Shopify, with the tracking.
+        Mail::assertNotQueued(ShipmentShippedEmail::class);
+        $this->assertTrue($this->fulfillments[0]['notifyCustomer']);
 
         $operation = ShopifyStockOperation::where('kind', 'fulfillment_create')->sole();
         $this->assertSame(ShopifyStockOperation::PENDING, $operation->status, 'Not shown as done without an answer.');
@@ -675,12 +683,17 @@ final class ShopifyTwoWarehouseSyncTest extends TestCase
         $this->fulfilmentOrders('6002', [['location' => self::SAX, 'lines' => [['item' => self::I43, 'qty' => 1, 'line_item_id' => '62']]]]);
         $line = ['id' => 62, 'sku' => 'SUN-43', 'title' => 'Sunday 43', 'quantity' => 1, 'current_quantity' => 1, 'price' => '159.00'];
         $this->postWebhook('orders/create', $this->orderPayload([$line], ['id' => 6002, 'name' => '#6002', 'financial_status' => 'paid']), $this->connection->webhook_token, 'o-6002');
+        $order = Order::where('external_id', '6002')->sole();
+        $order->forceFill(['customer_email' => 'cliente@example.com'])->save();
         $this->actingAs($this->admin);
+        Mail::fake();
 
         $shipments = app(ShipmentService::class);
-        $shipments->markShipped($shipments->create(Order::where('external_id', '6002')->sole(), []));
+        $shipments->markShipped($shipments->create($order, ['notify_customer' => true]));
 
         $this->assertSame([], $this->fulfillments);
         $this->assertSame(0, ShopifyStockOperation::count());
+        // Shopify is not told, so Inventoros sends the mail.
+        Mail::assertQueued(ShipmentShippedEmail::class);
     }
 }

@@ -224,7 +224,7 @@ if (! Schema::hasTable('shopify_inventory_levels')) {
         $table->timestamps();
 
         $table->unique(['organization_id', 'inventory_item_id', 'location_id'], 'shopify_levels_unique');
-        $table->index(['organization_id', 'product_variant_id']);
+        $table->index(['organization_id', 'product_variant_id'], 'shopify_levels_variant_index');
         $table->index(['organization_id', 'sync_status']);
     });
 }

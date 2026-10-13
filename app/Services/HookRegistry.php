@@ -534,6 +534,12 @@ final class HookRegistry
                 'example' => "add_filter('variant_stock_channel_issues', function (\$issues, \$organizationId, \$variantId) { return \$issues; });",
             ],
 
+            'shipment_customer_email' => [
+                'description' => 'Whether Inventoros emails the customer when a shipment that asks for it first leaves. Return false when another system (e.g. the sales channel the order came from) notifies the customer instead, so they get one mail.',
+                'parameters' => ['$send', '$shipment'],
+                'example' => "add_filter('shipment_customer_email', function (\$send, \$shipment) { return \$send; });",
+            ],
+
             // ========================================
             // PRODUCT FILTERS
             // ========================================

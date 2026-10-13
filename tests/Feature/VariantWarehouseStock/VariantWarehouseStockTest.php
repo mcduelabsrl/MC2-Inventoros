@@ -125,7 +125,7 @@ final class VariantWarehouseStockTest extends TestCase
         $this->assertSame(0, $this->levelAt($this->size42, $this->saxone)['on_hand']);
         $this->assertTrue($this->stockService()->isConsolidatedAt($order, $this->mc2->id));
         // Ownership travels with the pair.
-        $this->assertSame(1, OrderItemAllocation::where('order_id', $order->id)
+        $this->assertSame(1, (int) OrderItemAllocation::where('order_id', $order->id)
             ->where('warehouse_id', $this->mc2->id)->where('stock_owner_id', $this->ownerSaxone->id)->sum('quantity'));
 
         $shipments->markShipped($shipment->fresh());

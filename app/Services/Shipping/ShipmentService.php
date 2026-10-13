@@ -702,6 +702,11 @@ final class ShipmentService
             return;
         }
 
+        // Another system (e.g. the sales channel) may notify the customer.
+        if (! apply_filters('shipment_customer_email', true, $shipment)) {
+            return;
+        }
+
         $email = Order::withoutGlobalScopes()->whereKey($shipment->order_id)->value('customer_email');
 
         if (blank($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {

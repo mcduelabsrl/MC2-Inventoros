@@ -177,7 +177,7 @@ For a store with more than one location whose stock lives in Inventoros per vari
 
 ### Shipments are made in Inventoros
 
-A shipment of a Shopify order that leaves Inventoros fulfils the order in Shopify: from the location of the warehouse it left from, with its carrier and tracking number, through the same outbox (retried, status visible, failures listed as issues with a retry). Shopify does not email the customer (Inventoros does, when the shipment says so). When Shopify reports the fulfilment back it is recognised and moves no stock again. This works in every stock mode; turn it off with `push_fulfillments` on the connection. It needs the `write_merchant_managed_fulfillment_orders` scope.
+A shipment of a Shopify order that leaves Inventoros fulfils the order in Shopify: from the location of the warehouse it left from, with its carrier and tracking number, through the same outbox (retried, status visible, failures listed as issues with a retry). When the shipment asks to notify the customer, Shopify sends its shipping confirmation with the tracking and Inventoros does not send its own (filter `shipment_customer_email`), so the customer gets one mail; with `push_fulfillments` off, Inventoros sends it as before. When Shopify reports the fulfilment back it is recognised and moves no stock again. This works in every stock mode; turn it off with `push_fulfillments` on the connection. It needs the `write_merchant_managed_fulfillment_orders` scope.
 
 A fulfilment made directly in Shopify still becomes a shipment in Inventoros, as before.
 

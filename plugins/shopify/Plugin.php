@@ -198,15 +198,36 @@ return function (string $slug, array $manifest): void {
                 'mode' => 'delta',
                 'payload' => [
                     'shipment_id' => $shipment->id,
-                    // Inventoros emails the customer (if the shipment says so);
-                    // Shopify would send a second mail.
-                    'notify_customer' => false,
+                    // Shopify emails the customer (if the shipment says so),
+                    // with its tracking; Inventoros does not (filter below).
+                    'notify_customer' => (bool) $shipment->notify_customer,
                 ],
                 'effect' => [],
             ]);
             ProcessStockOutbox::dispatch((int) $order->organization_id);
         } catch (Throwable $e) {
             report($e);
+        }
+    });
+
+    // For a Shopify order whose shipment fulfils it in Shopify, Shopify
+    // sends the shipping confirmation: Inventoros does not send a second.
+    add_filter('shipment_customer_email', function ($send, $shipment) {
+        try {
+            if (! $send || $shipment->reported_by_channel !== null) {
+                return $send;
+            }
+            $order = Order::withoutGlobalScopes()->find($shipment->order_id);
+            if ($order === null || $order->source !== 'shopify') {
+                return $send;
+            }
+            $connection = ShopifyConnection::forOrganization((int) $order->organization_id);
+
+            return $connection === null || ! $connection->push_fulfillments;
+        } catch (Throwable $e) {
+            report($e);
+
+            return $send;
         }
     });
 

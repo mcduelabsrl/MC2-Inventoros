@@ -31,7 +31,7 @@ Le scritture verso Shopify partono solo con `shopify:stock-activate`, dopo che i
 
 - **Evasione su Shopify.** Quando una spedizione di un ordine Shopify parte da Inventoros, l'ordine viene evaso anche su Shopify, con corriere e tracking, dalla location del magazzino da cui è partita.
 - **Coda e tentativi.** L'evasione passa per la stessa coda delle giacenze: viene ritentata, se ne vede lo stato, e un errore compare tra le anomalie con il pulsante "Riprova".
-- **Mail al cliente.** Shopify non manda la mail al cliente; la manda Inventoros, se la spedizione lo prevede.
+- **Mail al cliente.** Per gli ordini Shopify la conferma di spedizione la manda Shopify, con il tracking, se la spedizione lo prevede ("Avvisa il cliente"). Inventoros non ne manda una seconda. Se l'evasione su Shopify è in errore, la mail parte quando l'evasione riesce. Con `push_fulfillments = false` la mail torna a mandarla Inventoros. Per gli ordini non Shopify non cambia niente.
 - **Ritorno da Shopify.** L'evasione che Shopify rimanda indietro viene riconosciuta: non crea una seconda spedizione e non scarica di nuovo.
 - **Indipendente dalla modalità di giacenza.** Funziona anche prima di attivare i due magazzini, quindi già con la produzione di oggi.
 - **Scope richiesto.** Serve lo scope `write_merchant_managed_fulfillment_orders`. Senza, l'evasione fallisce, viene segnalata e si può ritentare dopo aver aggiunto lo scope.
