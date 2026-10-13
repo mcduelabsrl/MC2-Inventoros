@@ -309,7 +309,7 @@ const tdClass = 'px-3 py-2 text-sm text-text-primary align-top';
                             </button>
                         </th>
                         <th v-for="col in [...warehouses.map((w) => [String(w.id), w.name]), ['total', t('stockByWarehouse.total')]]" :key="col[0]" :class="thClass" class="text-right" :aria-sort="sort === col[0] ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'">
-                            <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" :title="t('stockByWarehouse.sortByUnits')" @click="sortBy(col[0])">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" :title="t('stockByWarehouse.sortByUnits')" :aria-label="`${col[1]}: ${t('stockByWarehouse.sortByUnits')}`" @click="sortBy(col[0])">
                                 {{ col[1] }} <component :is="sortIcon(col[0])" :size="12" :class="sort === col[0] ? 'text-brand' : 'text-text-tertiary'" />
                             </button>
                         </th>
